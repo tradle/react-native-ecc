@@ -1,0 +1,32 @@
+{
+  "name": "react-native-ecc",
+  "version": "1.0.0",
+  "description": "basic elliptic curve crypto for React Native",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tradle/react-native-ecc"
+  },
+  "keywords": [
+    "react-native",
+    "react-component",
+    "ios",
+    "crypto",
+    "ecc",
+    "elliptic",
+    "sign",
+    "verify"
+  ],
+  "author": "Mark Vayngrib <mark.vayngrib@lablz.com> (http://github.com/mvayngrib)",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/tradle/react-native-ecc/issues"
+  },
+  "homepage": "https://github.com/tradle/react-native-ecc",
+  "dependencies": {
+    "buffer": "^3.6.0"
+  }
+}
