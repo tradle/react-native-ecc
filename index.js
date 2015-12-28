@@ -33,17 +33,8 @@ export function keyPair (curve, cb) {
   RNECC.generateECPair(serviceID, sizeInBits, function (err, base64pubKey) {
     if (err) return cb(err)
 
-    cb(null, createECKey(toBuffer(base64pubKey)))
+    cb(null, keyFromPublic(toBuffer(base64pubKey)))
   })
-}
-
-/**
- * Returns a key with the API as the one returned by keyPair(...)
- * @param  {Buffer} pub pubKey buffer for existing key (created with keyPair(...))
- * @return {Object} key
- */
-export function keyFromPublic (pub) {
-  return createECKey(pub)
 }
 
 /**
@@ -85,7 +76,12 @@ export function verify (pubKey, hash, sig, cb) {
   RNECC.verify(pubKey, toString(hash), toString(sig), cb)
 }
 
-function createECKey (pubKeyBuf) {
+/**
+ * Returns a key with the API as the one returned by keyPair(...)
+ * @param  {Buffer} pub pubKey buffer for existing key (created with keyPair(...))
+ * @return {Object} key
+ */
+export function keyFromPublic (pubKeyBuf) {
   let base64pub = toString(pubKeyBuf)
   return {
     sign: sign.bind(null, base64pub),
