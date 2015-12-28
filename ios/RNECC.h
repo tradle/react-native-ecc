@@ -26,12 +26,11 @@ enum RNECCError
 typedef enum RNECCError RNECCError;
 
 - (NSString *) toPublicIdentifier:(NSString *)privIdentifier;
-- (NSData *)getPublicKeyDataByLabel:(NSString *)label;
-- (SecKeyRef)getKeyRef:(NSString *)tag;//
-- (NSError *)genericError:(NSString *)errMsg;
-- (NSError *)createError:(RNECCError)type msg:(NSString *)msg;
-- (NSString *)keychainErrorToString:(OSStatus)error;
+- (NSData *) getPublicKeyDataByLabel:(NSString *)label;
+- (SecKeyRef) getPublicKeyRef:(NSString *)base64pub;
+- (SecKeyRef) getPrivateKeyRef:(NSString *)serviceID pub:(NSString *)base64pub;
 - (OSStatus) tagKeyWithLabel:(NSString*)label tag:(NSString*)tag;
-- (NSString *)uuidString;
-
+- (NSString *) uuidString;
+- (NSData *) sign:(NSString *)serviceID pub:(NSString *)base64pub hash:(NSData *)hash error:(NSDictionary **) error;
+- (BOOL) verify:(NSString *)base64pub hash:(NSData *)hash sig:(NSData *)sig error:(NSDictionary **)error;
 @end

@@ -25,7 +25,7 @@
 /* Begin PBXFileReference section */
 		7398B54B1C30326E00106C47 /* libRNECC.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libRNECC.a; sourceTree = BUILT_PRODUCTS_DIR; };
 		7398B5571C3032A200106C47 /* RNECC.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RNECC.h; sourceTree = "<group>"; };
-		7398B5581C3032A200106C47 /* RNECC.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = RNECC.m; sourceTree = "<group>"; };
+		7398B5581C3032A200106C47 /* RNECC.m */ = {isa = PBXFileReference; fileEncoding = 4; indentWidth = 2; lastKnownFileType = sourcecode.c.objc; path = RNECC.m; sourceTree = "<group>"; tabWidth = 2; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
