@@ -4,6 +4,10 @@ basic elliptic curve crypto for React Native
 
 **this module is used by [Tradle](https://github.com/tradle/tim)**
 
+## Installation
+
+See [Linking Libraries](http://facebook.github.io/react-native/docs/linking-libraries-ios.html)
+
 ## Usage
 
 ```js
