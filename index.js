@@ -2,6 +2,13 @@
 import { NativeModules } from 'react-native'
 import { Buffer } from 'buffer'
 const RNECC = NativeModules.RNECC
+let serviceID;
+
+export function setServiceID (id) {
+  if (serviceID) throw new Error('serviceID can only be set once')
+
+  serviceID = id
+}
 
 export const curves = {
   p192: 192,
@@ -17,12 +24,13 @@ export const curves = {
  * @param  {Function} cb
  */
 export function keyPair (curve, cb) {
+  checkServiceID()
   assert(typeof curve === 'string')
   assert(typeof cb === 'function')
   if (!(curve in curves)) throw new Error('unsupported curve')
 
   let sizeInBits = curves[curve]
-  RNECC.generateECPair(sizeInBits, function (err, base64pubKey) {
+  RNECC.generateECPair(serviceID, sizeInBits, function (err, base64pubKey) {
     if (err) return cb(err)
 
     cb(null, createECKey(toBuffer(base64pubKey)))
@@ -36,13 +44,14 @@ export function keyPair (curve, cb) {
  * @param  {Function} cb
  */
 export function sign (pubKey, hash, cb) {
+  checkServiceID()
   pubKey = toString(pubKey)
 
   assert(typeof pubKey === 'string')
   assert(Buffer.isBuffer(hash))
   assert(typeof cb === 'function')
 
-  RNECC.sign(pubKey, toString(hash), function (err, base64sig) {
+  RNECC.sign(serviceID, pubKey, toString(hash), function (err, base64sig) {
     if (err) return cb(err)
 
     cb(null, toBuffer(base64sig))
@@ -92,4 +101,10 @@ function toBuffer (str) {
   if (typeof str === 'string') return new Buffer(str, 'base64')
 
   throw new Error('expected string or buffer')
+}
+
+function checkServiceID () {
+  if (!serviceID) {
+    throw new Error('call setServiceID() first')
+  }
 }
