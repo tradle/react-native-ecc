@@ -1,6 +1,6 @@
 {
   "name": "react-native-ecc",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "basic elliptic curve crypto for React Native",
   "main": "index.js",
   "scripts": {
