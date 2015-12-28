@@ -21,7 +21,7 @@ export const curves = {
 /**
  * generates a new key pair, calls back with pub key
  * @param  {String}   curve - elliptic curve
- * @param  {Function} cb
+ * @param  {Function} cb - calls back with a new key with the API: { sign, verify, pub }
  */
 export function keyPair (curve, cb) {
   checkServiceID()
@@ -35,6 +35,15 @@ export function keyPair (curve, cb) {
 
     cb(null, createECKey(toBuffer(base64pubKey)))
   })
+}
+
+/**
+ * Returns a key with the API as the one returned by keyPair(...)
+ * @param  {Buffer} pub pubKey buffer for existing key (created with keyPair(...))
+ * @return {Object} key
+ */
+export function keyFromPublic (pub) {
+  return createECKey(pub)
 }
 
 /**

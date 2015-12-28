@@ -23,8 +23,13 @@ let plaintextHash = new Buffer('c764320a6820c75c82ec43523690bdfd547a077fd6fb805d
 // check ec.curves for supported curves
 let curve = 'p256'
 ec.keyPair(curve, function (err, key) {
-  // key.pub is tested for compatibility with npm library "elliptic"
+  // pub tested for compatibility with npm library "elliptic"
+  let pub = key.pub
   console.log('pub', key.pub.toString('hex'))
+
+  // look up the key later like this:
+  // let key = ec.keyFromPublic(pub)
+
   key.sign(plaintextHash, function (err, sig) {
     // signatures tested for compatibility with npm library "elliptic"
     console.log('sig', sig.toString('hex'))
