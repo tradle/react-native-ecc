@@ -28,7 +28,7 @@ typedef enum RNECCError RNECCError;
 - (NSString *) toPublicIdentifier:(NSString *)privIdentifier;
 - (NSData *) getPublicKeyDataByLabel:(NSString *)label;
 - (SecKeyRef) getPublicKeyRef:(NSString *)base64pub;
-- (SecKeyRef) getPrivateKeyRef:(NSString *)serviceID pub:(NSString *)base64pub;
+- (SecKeyRef) getPrivateKeyRef:(NSString *)serviceID pub:(NSString *)base64pub status:(OSStatus *)status;
 - (OSStatus) tagKeyWithLabel:(NSString*)label tag:(NSString*)tag;
 - (NSString *) uuidString;
 - (NSData *) sign:(NSString *)serviceID pub:(NSString *)base64pub hash:(NSData *)hash error:(NSDictionary **) error;

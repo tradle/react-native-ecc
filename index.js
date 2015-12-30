@@ -85,6 +85,20 @@ export function verify (pubKey, hash, sig, cb) {
   RNECC.verify(pubKey, toString(hash), toString(sig), cb)
 }
 
+export function hasKey (pubKey, cb) {
+  assert(Buffer.isBuffer(pubKey))
+  RNECC.hasKey(serviceID, toString(pubKey), cb)
+}
+
+export function lookupKey (pubKey, cb) {
+  hasKey(pubKey, function (err, exists) {
+    if (err) return cb(err)
+    if (exists) return cb(null, keyFromPublic(pubKey))
+
+    cb(new Error('NotFound'))
+  })
+}
+
 /**
  * Returns a key with the API as the one returned by keyPair(...)
  * @param  {Buffer} pub pubKey buffer for existing key (created with keyPair(...))
