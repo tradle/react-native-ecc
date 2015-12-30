@@ -2,8 +2,9 @@
 import { NativeModules } from 'react-native'
 import { Buffer } from 'buffer'
 const RNECC = NativeModules.RNECC
-let serviceID;
+let serviceID
 
+export const encoding = 'base64'
 export function setServiceID (id) {
   if (serviceID) throw new Error('serviceID can only be set once')
 
@@ -104,14 +105,14 @@ function assert (statement, errMsg) {
 
 function toString (buf) {
   if (typeof buf === 'string') return buf
-  if (Buffer.isBuffer(buf)) return buf.toString('base64')
+  if (Buffer.isBuffer(buf)) return buf.toString(encoding)
 
   return buf.toString()
 }
 
 function toBuffer (str) {
   if (Buffer.isBuffer(str)) return str
-  if (typeof str === 'string') return new Buffer(str, 'base64')
+  if (typeof str === 'string') return new Buffer(str, encoding)
 
   throw new Error('expected string or buffer')
 }
