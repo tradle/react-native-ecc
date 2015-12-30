@@ -10,6 +10,10 @@ export function setServiceID (id) {
   serviceID = id
 }
 
+export function getServiceID () {
+  return serviceID
+}
+
 export const curves = {
   p192: 192,
   p224: 224,
