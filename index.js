@@ -40,9 +40,7 @@ export function keyPair (curve, cb) {
 
   let sizeInBits = curves[curve]
   RNECC.generateECPair(serviceID, sizeInBits, function (err, base64pubKey) {
-    if (err) return cb(err)
-
-    cb(null, keyFromPublic(toBuffer(base64pubKey)))
+    cb(convertError(err), base64pubKey && keyFromPublic(toBuffer(base64pubKey)))
   })
 }
 
@@ -60,11 +58,7 @@ export function sign (pubKey, hash, cb) {
   assert(Buffer.isBuffer(hash))
   assert(typeof cb === 'function')
 
-  RNECC.sign(serviceID, pubKey, toString(hash), function (err, base64sig) {
-    if (err) return cb(err)
-
-    cb(null, toBuffer(base64sig))
-  })
+  RNECC.sign(serviceID, pubKey, toString(hash), normalizeCallback(cb))
 }
 
 /**
@@ -82,17 +76,17 @@ export function verify (pubKey, hash, sig, cb) {
   assert(Buffer.isBuffer(sig))
   assert(typeof cb === 'function')
 
-  RNECC.verify(pubKey, toString(hash), toString(sig), cb)
+  RNECC.verify(pubKey, toString(hash), toString(sig), normalizeCallback(cb))
 }
 
 export function hasKey (pubKey, cb) {
   assert(Buffer.isBuffer(pubKey))
-  RNECC.hasKey(serviceID, toString(pubKey), cb)
+  RNECC.hasKey(serviceID, toString(pubKey), normalizeCallback(cb))
 }
 
 export function lookupKey (pubKey, cb) {
   hasKey(pubKey, function (err, exists) {
-    if (err) return cb(err)
+    if (err) return cb(convertError(err))
     if (exists) return cb(null, keyFromPublic(pubKey))
 
     cb(new Error('NotFound'))
@@ -134,5 +128,26 @@ function toBuffer (str) {
 function checkServiceID () {
   if (!serviceID) {
     throw new Error('call setServiceID() first')
+  }
+}
+
+function convertError (error) {
+  if (!error) {
+    return null;
+  }
+  var out = new Error(error.message);
+  out.key = error.key; // flow doesn't like this :(
+  return out;
+}
+
+function normalizeCallback (cb) {
+  return function (err, result) {
+    if (err) return cb(convertError(err))
+
+    result = typeof result === 'string'
+      ? toBuffer(result)
+      : result
+
+    return cb(null, result)
   }
 }
