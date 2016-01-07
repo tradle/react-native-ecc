@@ -305,7 +305,7 @@ RCT_EXPORT_METHOD(verify:(NSString *)base64pub
 
 -(OSStatus) tagKeyWithLabel:(NSString*)label tag:(NSString*)tag
 {
-  SecKeyRef foundItem;// = [self getKeyRefByLabel:label];
+  SecKeyRef foundItem;
   OSStatus findStatus = SecItemCopyMatching((__bridge CFDictionaryRef)@{
                                                                         (__bridge id)kSecClass: (__bridge id)kSecClassKey,
                                                                         (__bridge id)kSecAttrApplicationLabel: label,
@@ -379,16 +379,16 @@ NSDictionary* rneccMakeError(NSString* errMsg)
   return CFBridgingRelease(result);
 }
 
--(SecKeyRef)getKeyRefByLabel:(NSString *)label
+-(SecKeyRef)getKeyRefByLabel:(NSString *)label status:(OSStatus*)status
 {
   SecKeyRef keyRef;
-  OSStatus status = SecItemCopyMatching((__bridge CFDictionaryRef)@{
+  *status = SecItemCopyMatching((__bridge CFDictionaryRef)@{
     (__bridge id)kSecClass: (__bridge id)kSecClassKey,
     (__bridge id)kSecReturnRef: @YES,
     (__bridge id)kSecAttrApplicationLabel:label
   }, (CFTypeRef *)&keyRef);
 
-  if (status != errSecSuccess)
+  if (*status != errSecSuccess)
   {
     return nil;
   }
@@ -417,7 +417,7 @@ NSDictionary* rneccMakeError(NSString* errMsg)
 
   found = (__bridge NSDictionary*)(foundTypeRef);
   NSString* uuid = [found objectForKey:(__bridge id)(kSecAttrGeneric)];
-  return [self getKeyRefByLabel:uuid];
+  return [self getKeyRefByLabel:uuid status:status];
 }
 
 -(SecKeyRef)getPublicKeyRef:(NSString *)base64pub
@@ -467,6 +467,7 @@ NSString *keychainStatusToString(OSStatus status) {
       break;
 
     default:
+      message = [NSString stringWithFormat:@"error with OSStatus %d", status];
       break;
   }
 
