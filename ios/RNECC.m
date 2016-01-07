@@ -27,17 +27,17 @@ RCT_EXPORT_MODULE();
 
 RCT_EXPORT_METHOD(test)
 {
-  NSString* error;
+  NSString* errMsg;
   NSString* serviceId = @"this.is.a.test";
-  NSString* pub = [self generateECPair:serviceId sizeInBits:@256 error:&error];
+  NSString* pub = [self generateECPair:serviceId sizeInBits:@256 errMsg:&errMsg];
   if (pub == nil) return;
 
   NSMutableData* hash = [NSMutableData dataWithLength:HASH_LENGTH];
   SecRandomCopyBytes(kSecRandomDefault, HASH_LENGTH, [hash mutableBytes]);
-  NSData* sig = [self sign:serviceId pub:pub hash:hash error:&error];
+  NSData* sig = [self sign:serviceId pub:pub hash:hash errMsg:&errMsg];
   if (sig == nil) return;
 
-  BOOL verified = [self verify:pub hash:hash sig:sig error:&error];
+  BOOL verified = [self verify:pub hash:hash sig:sig errMsg:&errMsg];
   NSLog(@"success: %i", verified);
 }
 
@@ -45,10 +45,10 @@ RCT_EXPORT_METHOD(generateECPair: (nonnull NSString*) serviceID
                       sizeInBits:(nonnull NSNumber*)sizeInBits
                         callback:(RCTResponseSenderBlock)callback) {
   dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-    NSString* error;
-    NSString* base64pub = [self generateECPair:serviceID sizeInBits:sizeInBits error:&error];
+    NSString* errMsg;
+    NSString* base64pub = [self generateECPair:serviceID sizeInBits:sizeInBits errMsg:&errMsg];
     if (base64pub == nil) {
-      return callback(@[error]);
+      return callback(@[rneccMakeError(errMsg)]);
     } else {
       callback(@[[NSNull null], base64pub]);
     }
@@ -60,7 +60,7 @@ RCT_EXPORT_METHOD(generateECPair: (nonnull NSString*) serviceID
  */
 - (NSString *) generateECPair:(nonnull NSString*) serviceID
                    sizeInBits:(nonnull NSNumber*)sizeInBits
-                        error:(NSString **)error
+                        errMsg:(NSString **)errMsg
 {
   CFErrorRef sacErr = NULL;
   SecAccessControlRef sacObject;
@@ -74,7 +74,7 @@ RCT_EXPORT_METHOD(generateECPair: (nonnull NSString*) serviceID
                                               &sacErr);
 
   if (sacErr) {
-    *error = [(__bridge NSError *)sacErr description];
+    *errMsg = [(__bridge NSError *)sacErr description];
     return nil;
   }
 
@@ -113,7 +113,7 @@ RCT_EXPORT_METHOD(generateECPair: (nonnull NSString*) serviceID
   SecKeyRef publicKey, privateKey;
   OSStatus status = SecKeyGeneratePair((__bridge CFDictionaryRef)parameters, &publicKey, &privateKey);
   if (status != errSecSuccess) {
-    *error = keychainStatusToString(status);
+    *errMsg = keychainStatusToString(status);
     return nil;
   }
 
@@ -128,7 +128,7 @@ RCT_EXPORT_METHOD(generateECPair: (nonnull NSString*) serviceID
     if (status != errSecSuccess) {
       CFRelease(privateKey);
       CFRelease(publicKey);
-      *error = keychainStatusToString(status);
+      *errMsg = keychainStatusToString(status);
       return nil;
     }
   }
@@ -151,7 +151,7 @@ RCT_EXPORT_METHOD(generateECPair: (nonnull NSString*) serviceID
   if (status != errSecSuccess) {
     CFRelease(privateKey);
     CFRelease(publicKey);
-    *error = keychainStatusToString(status);
+    *errMsg = keychainStatusToString(status);
     return nil;
   }
 
@@ -161,7 +161,7 @@ RCT_EXPORT_METHOD(generateECPair: (nonnull NSString*) serviceID
   CFRelease(privateKey);
   CFRelease(publicKey);
   if (status != errSecSuccess) {
-    *error = keychainStatusToString(status);
+    *errMsg = keychainStatusToString(status);
     return nil;
   }
 
@@ -198,10 +198,10 @@ RCT_EXPORT_METHOD(sign:(nonnull NSString *)serviceID
   }
 
   dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-    NSString* error;
-    NSData* sig = [self sign:serviceID pub:base64pub hash:hash error:&error];
+    NSString* errMsg;
+    NSData* sig = [self sign:serviceID pub:base64pub hash:hash errMsg:&errMsg];
     if (!sig) {
-      callback(@[error]);
+      callback(@[rneccMakeError(errMsg)]);
       return;
     }
 
@@ -213,12 +213,12 @@ RCT_EXPORT_METHOD(sign:(nonnull NSString *)serviceID
 -(NSData *)sign:(nonnull NSString *)serviceID
             pub:(nonnull NSString *)base64pub
            hash:(nonnull NSData *)hash
-          error:(NSString **) error {
+          errMsg:(NSString **) errMsg {
 
   OSStatus status;
   SecKeyRef privateKey = [self getPrivateKeyRef:serviceID pub:base64pub status:&status];
   if (!privateKey) {
-    *error = keychainStatusToString(status);
+    *errMsg = keychainStatusToString(status);
     return nil;
   }
 
@@ -235,7 +235,7 @@ RCT_EXPORT_METHOD(sign:(nonnull NSString *)serviceID
 
   CFRelease(privateKey);
   if (status != errSecSuccess) {
-    *error = keychainStatusToString(status);
+    *errMsg = keychainStatusToString(status);
     return nil;
   }
 
@@ -264,7 +264,7 @@ RCT_EXPORT_METHOD(verify:(NSString *)base64pub
   dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
     NSData* sigData = [[NSData alloc] initWithBase64EncodedString:sig options:0];
     NSString* errMsg = nil;
-    BOOL verified = [self verify:base64pub hash:hash sig:sigData error:&errMsg];
+    BOOL verified = [self verify:base64pub hash:hash sig:sigData errMsg:&errMsg];
     if (!verified) {
       callback(@[rneccMakeError(errMsg), @NO]);
       return;
@@ -277,7 +277,7 @@ RCT_EXPORT_METHOD(verify:(NSString *)base64pub
 -(BOOL) verify:(NSString *)base64pub
           hash:(NSData *)hash
            sig:(NSData *)sig
-         error:(NSString **)errMsg {
+         errMsg:(NSString **)errMsg {
 
   SecKeyRef publicKey = [self getPublicKeyRef:[self toPublicIdentifier:base64pub]];
   if (!publicKey) {

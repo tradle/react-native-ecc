@@ -17,6 +17,6 @@
 - (SecKeyRef) getPrivateKeyRef:(NSString *)serviceID pub:(NSString *)base64pub status:(OSStatus *)status;
 - (OSStatus) tagKeyWithLabel:(NSString*)label tag:(NSString*)tag;
 - (NSString *) uuidString;
-- (NSData *) sign:(NSString *)serviceID pub:(NSString *)base64pub hash:(NSData *)hash error:(NSString **) errMsg;
-- (BOOL) verify:(NSString *)base64pub hash:(NSData *)hash sig:(NSData *)sig error:(NSString **)errMsg;
+- (NSData *) sign:(NSString *)serviceID pub:(NSString *)base64pub hash:(NSData *)hash errMsg:(NSString **) errMsg;
+- (BOOL) verify:(NSString *)base64pub hash:(NSData *)hash sig:(NSData *)sig errMsg:(NSString **)errMsg;
 @end
