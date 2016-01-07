@@ -13,8 +13,6 @@
 #define HASH_LENGTH             CC_SHA256_DIGEST_LENGTH
 #define kTypeOfSigPadding       kSecPaddingPKCS1
 
-NSString *const RNECCErrorDomain = @"RNECCErrorDomain";
-
 #if TARGET_OS_SIMULATOR
 static BOOL isSimulator = YES;
 #else
@@ -172,16 +170,18 @@ RCT_EXPORT_METHOD(hasKey:(nonnull NSString *)serviceID
                   pub:(nonnull NSString *)base64pub
                   callback:(RCTResponseSenderBlock)callback)
 {
-  OSStatus status;
-  SecKeyRef privateKey = [self getPrivateKeyRef:serviceID pub:base64pub status:&status];
-  if (privateKey) {
-    CFRelease(privateKey);
-    callback(@[[NSNull null], @YES]);
-  } else if (status == errSecItemNotFound) {
-    callback(@[[NSNull null], @NO]);
-  } else {
-    callback(@[rneccMakeError(keychainStatusToString(status))]);
-  }
+  dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+    OSStatus status;
+    SecKeyRef privateKey = [self getPrivateKeyRef:serviceID pub:base64pub status:&status];
+    if (privateKey) {
+      CFRelease(privateKey);
+      callback(@[[NSNull null], @YES]);
+    } else if (status == errSecItemNotFound) {
+      callback(@[[NSNull null], @NO]);
+    } else {
+      callback(@[rneccMakeError(keychainStatusToString(status))]);
+    }
+  });
 }
 
 RCT_EXPORT_METHOD(sign:(nonnull NSString *)serviceID

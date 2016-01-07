@@ -1,5 +1,5 @@
 //
-//  RNCryptoUtils.h
+//  RNECC.h
 //  rnecc
 //
 //  Created by Mark Vayngrib on 12/24/15.
