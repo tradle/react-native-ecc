@@ -1,21 +1,47 @@
+'use strict'
 
 import { NativeModules } from 'react-native'
 import { Buffer } from 'buffer'
 const RNECC = NativeModules.RNECC
+const encoding = 'base64'
 let serviceID
+let accessGroup
 
-export const encoding = 'base64'
-export function setServiceID (id) {
+module.exports = {
+  encoding,
+  setServiceID,
+  getServiceID,
+  setAccessGroup,
+  getAccessGroup,
+  keyPair,
+  sign,
+  verify,
+  lookupKey,
+  hasKey,
+  keyFromPublic
+}
+
+function setServiceID (id) {
   if (serviceID) throw new Error('serviceID can only be set once')
 
   serviceID = id
 }
 
-export function getServiceID () {
+function getServiceID () {
   return serviceID
 }
 
-export const curves = {
+function setAccessGroup (val) {
+  if (accessGroup) throw new Error('accessGroup can only be set once')
+
+  accessGroup = val
+}
+
+function getAccessGroup () {
+  return accessGroup
+}
+
+const curves = {
   p192: 192,
   p224: 224,
   p256: 256,
@@ -32,33 +58,42 @@ export const curves = {
  * @param  {String}   curve - elliptic curve
  * @param  {Function} cb - calls back with a new key with the API: { sign, verify, pub }
  */
-export function keyPair (curve, cb) {
+function keyPair (curve, cb) {
   checkServiceID()
   assert(typeof curve === 'string')
   assert(typeof cb === 'function')
   if (!(curve in curves)) throw new Error('unsupported curve')
 
   let sizeInBits = curves[curve]
-  RNECC.generateECPair(serviceID, sizeInBits, function (err, base64pubKey) {
+  RNECC.generateECPair({
+    curve: curve,
+    bits: sizeInBits,
+    service: serviceID,
+    accessGroup: accessGroup,
+    bits: sizeInBits
+  }, function (err, base64pubKey) {
     cb(convertError(err), base64pubKey && keyFromPublic(toBuffer(base64pubKey)))
   })
 }
 
 /**
  * signs a hash
- * @param  {Buffer}   pubKey - pubKey corresponding to private key to sign hash with
- * @param  {Buffer}   hash - hash to sign
+ * @param  {Buffer|String}   pub - pubKey corresponding to private key to sign hash with
+ * @param  {Buffer|String}   hash - hash to sign
  * @param  {Function} cb
  */
-export function sign (pubKey, hash, cb) {
+function sign (pub, hash, cb) {
   checkServiceID()
-  pubKey = toString(pubKey)
-
-  assert(typeof pubKey === 'string')
-  assert(Buffer.isBuffer(hash))
+  assert(Buffer.isBuffer(pub) || typeof pub === 'string')
+  assert(Buffer.isBuffer(hash) || typeof hash === 'string')
   assert(typeof cb === 'function')
 
-  RNECC.sign(serviceID, pubKey, toString(hash), normalizeCallback(cb))
+  RNECC.sign({
+    service: serviceID,
+    accessGroup: accessGroup,
+    pub: toString(pub),
+    hash: toString(hash)
+  }, normalizeCallback(cb))
 }
 
 /**
@@ -68,7 +103,7 @@ export function sign (pubKey, hash, cb) {
  * @param  {Buffer}   sig - signature of hash
  * @param  {Function} cb
  */
-export function verify (pubKey, hash, sig, cb) {
+function verify (pubKey, hash, sig, cb) {
   pubKey = toString(pubKey)
 
   assert(typeof pubKey === 'string')
@@ -79,12 +114,17 @@ export function verify (pubKey, hash, sig, cb) {
   RNECC.verify(pubKey, toString(hash), toString(sig), normalizeCallback(cb))
 }
 
-export function hasKey (pubKey, cb) {
-  assert(Buffer.isBuffer(pubKey))
-  RNECC.hasKey(serviceID, toString(pubKey), normalizeCallback(cb))
+function hasKey (pub, cb) {
+  checkServiceID()
+  assert(Buffer.isBuffer(pub) || typeof pub === 'string')
+  RNECC.hasKey({
+    service: serviceID,
+    accessGroup: accessGroup,
+    pub: toString(pub)
+  }, normalizeCallback(cb))
 }
 
-export function lookupKey (pubKey, cb) {
+function lookupKey (pubKey, cb) {
   hasKey(pubKey, function (err, exists) {
     if (err) return cb(convertError(err))
     if (exists) return cb(null, keyFromPublic(pubKey))
@@ -98,7 +138,7 @@ export function lookupKey (pubKey, cb) {
  * @param  {Buffer} pub pubKey buffer for existing key (created with keyPair(...))
  * @return {Object} key
  */
-export function keyFromPublic (pubKeyBuf) {
+function keyFromPublic (pubKeyBuf) {
   let base64pub = toString(pubKeyBuf)
   return {
     sign: sign.bind(null, base64pub),

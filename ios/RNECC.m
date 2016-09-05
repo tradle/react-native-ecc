@@ -27,7 +27,12 @@ RCT_EXPORT_METHOD(test)
 {
   NSString* errMsg;
   NSString* serviceId = @"this.is.a.test";
-  NSString* pub = [self generateECPair:serviceId sizeInBits:@256 errMsg:&errMsg];
+  NSString* pub = [self generateECPair:@{
+                                         @"service": serviceId,
+                                         @"bits": @256
+                                         }
+                                errMsg:&errMsg];
+
   if (pub == nil) return;
 
   NSMutableData* hash = [NSMutableData dataWithLength:HASH_LENGTH];
@@ -39,12 +44,11 @@ RCT_EXPORT_METHOD(test)
   NSLog(@"success: %i", verified);
 }
 
-RCT_EXPORT_METHOD(generateECPair: (nonnull NSString*) serviceID
-                      sizeInBits:(nonnull NSNumber*)sizeInBits
+RCT_EXPORT_METHOD(generateECPair:(nonnull NSDictionary*) options
                         callback:(RCTResponseSenderBlock)callback) {
   dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
     NSString* errMsg;
-    NSString* base64pub = [self generateECPair:serviceID sizeInBits:sizeInBits errMsg:&errMsg];
+    NSString* base64pub = [self generateECPair:options errMsg:&errMsg];
     if (base64pub == nil) {
       return callback(@[rneccMakeError(errMsg)]);
     } else {
@@ -56,8 +60,7 @@ RCT_EXPORT_METHOD(generateECPair: (nonnull NSString*) serviceID
 /**
  * @return base64 pub key string
  */
-- (NSString *) generateECPair:(nonnull NSString*) serviceID
-                   sizeInBits:(nonnull NSNumber*)sizeInBits
+- (NSString *) generateECPair:(nonnull NSDictionary*) options
                         errMsg:(NSString **)errMsg
 {
   CFErrorRef sacErr = NULL;
@@ -89,6 +92,13 @@ RCT_EXPORT_METHOD(generateECPair: (nonnull NSString*) serviceID
 //    [privateKeyAttrs setObject:(__bridge id)kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly forKey:(__bridge id)kSecAttrAccessible];
   }
 
+  NSString* serviceID = [options valueForKey:@"service"];
+  NSNumber* sizeInBits = [options objectForKey:@"bits"];
+  NSString* accessGroup = [options valueForKey:@"accessGroup"];
+  if (accessGroup) {
+    [privateKeyAttrs setObject:accessGroup forKey:(__bridge id)kSecAttrAccessGroup];
+  }
+
   NSDictionary *publicKeyAttrs = @{
                                    (__bridge id)kSecAttrIsPermanent: isSimulator ? @YES : @NO,
                                    (__bridge id)kSecAttrApplicationLabel: pubKeyLabel,
@@ -96,10 +106,14 @@ RCT_EXPORT_METHOD(generateECPair: (nonnull NSString*) serviceID
 
   NSMutableDictionary *parameters = [NSMutableDictionary dictionaryWithDictionary: @{
                                (__bridge id)kSecAttrKeyType: (__bridge id)kSecAttrKeyTypeEC,
-                               (__bridge id)kSecAttrKeySizeInBits: sizeInBits,
+                               (__bridge id)kSecAttrKeySizeInBits: @256,
                                (__bridge id)kSecPrivateKeyAttrs: privateKeyAttrs,
                                (__bridge id)kSecPublicKeyAttrs: publicKeyAttrs,
                                }];
+
+  if (accessGroup) {
+    [parameters setObject:accessGroup forKey:(__bridge id)kSecAttrAccessGroup];
+  }
 
   if (!isSimulator && floor(NSFoundationVersionNumber) > NSFoundationVersionNumber_iOS_8_0) {
     NSOperatingSystemVersion os = [[NSProcessInfo processInfo] operatingSystemVersion];
@@ -166,13 +180,12 @@ RCT_EXPORT_METHOD(generateECPair: (nonnull NSString*) serviceID
   return base64str;
 }
 
-RCT_EXPORT_METHOD(hasKey:(nonnull NSString *)serviceID
-                  pub:(nonnull NSString *)base64pub
+RCT_EXPORT_METHOD(hasKey:(nonnull NSDictionary *)options
                   callback:(RCTResponseSenderBlock)callback)
 {
   dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
     OSStatus status;
-    SecKeyRef privateKey = [self getPrivateKeyRef:serviceID pub:base64pub status:&status];
+    SecKeyRef privateKey = [self getPrivateKeyRef:options status:&status];
     if (privateKey) {
       CFRelease(privateKey);
       callback(@[[NSNull null], @YES]);
@@ -184,22 +197,13 @@ RCT_EXPORT_METHOD(hasKey:(nonnull NSString *)serviceID
   });
 }
 
-RCT_EXPORT_METHOD(sign:(nonnull NSString *)serviceID
-                  pub:(nonnull NSString *)base64pub
-                  hash:(nonnull NSString *)base64Hash
+RCT_EXPORT_METHOD(sign:(nonnull NSDictionary *)options
                   //                  withAuthenticationPrompt:(NSString *)prompt
                   callback:(RCTResponseSenderBlock)callback) {
   // Query private key object from the keychain.
-  NSData *hash = [[NSData alloc] initWithBase64EncodedString:base64Hash options:0];
-  if ([hash length] != HASH_LENGTH) {
-    NSString* message = [NSString stringWithFormat:@"hash parameter must be %d bytes", HASH_LENGTH];
-    callback(@[rneccMakeError(message)]);
-    return;
-  }
-
   dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
     NSString* errMsg;
-    NSData* sig = [self sign:serviceID pub:base64pub hash:hash errMsg:&errMsg];
+    NSData* sig = [self sign:options errMsg:&errMsg];
     if (!sig) {
       callback(@[rneccMakeError(errMsg)]);
       return;
@@ -210,13 +214,18 @@ RCT_EXPORT_METHOD(sign:(nonnull NSString *)serviceID
   });
 }
 
--(NSData *)sign:(nonnull NSString *)serviceID
-            pub:(nonnull NSString *)base64pub
-           hash:(nonnull NSData *)hash
+-(NSData *)sign:(nonnull NSDictionary*)options
           errMsg:(NSString **) errMsg {
 
   OSStatus status;
-  SecKeyRef privateKey = [self getPrivateKeyRef:serviceID pub:base64pub status:&status];
+  NSString* base64hash = [options valueForKey:@"hash"];
+  NSData *hash = [[NSData alloc] initWithBase64EncodedString:base64hash options:0];
+  if ([hash length] != HASH_LENGTH) {
+    *errMsg = [NSString stringWithFormat:@"hash parameter must be %d bytes", HASH_LENGTH];
+    return nil;
+  }
+
+  SecKeyRef privateKey = [self getPrivateKeyRef:options status:&status];
   if (!privateKey) {
     *errMsg = keychainStatusToString(status);
     return nil;
@@ -396,16 +405,27 @@ NSDictionary* rneccMakeError(NSString* errMsg)
   return keyRef;
 }
 
--(SecKeyRef)getPrivateKeyRef:(NSString *)serviceID
-                         pub:(NSString *)base64pub
+-(SecKeyRef)getPrivateKeyRef:(nonnull NSDictionary *)options
                       status:(OSStatus *)status
 {
-  NSDictionary* uuidAttrs = @{
+  NSMutableDictionary* uuidAttrs = [NSMutableDictionary dictionaryWithDictionary: @{
                              (__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
-                             (__bridge id)kSecAttrService: serviceID,
-                             (__bridge id)kSecAttrAccount:base64pub,
                              (__bridge id)kSecReturnAttributes: @YES,
-                             };
+                             }];
+
+  NSString* serviceID = [options valueForKey:@"service"];
+  NSString* base64pub = [options valueForKey:@"pub"];
+
+  [uuidAttrs setObject:serviceID forKey:(__bridge id)kSecAttrService];
+
+  NSString* accessGroup = [options valueForKey:@"accessGroup"];
+  if (accessGroup) {
+    [uuidAttrs setObject:accessGroup forKey:(__bridge id)kSecAttrAccessGroup];
+  }
+
+  if (base64pub) {
+    [uuidAttrs setObject:base64pub forKey:(__bridge id)kSecAttrAccount];
+  }
 
   NSDictionary* found = nil;
   CFTypeRef foundTypeRef = NULL;
