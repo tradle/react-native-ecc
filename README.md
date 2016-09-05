@@ -17,6 +17,8 @@ import { Buffer } from 'buffer'
 // if you want to be able to find your keys
 // next time, make sure to use the same service ID 
 ec.setServiceID('be.excellent.to.each.other')
+// optional
+// ec.setAccessGroup('dsadjsakd.com.app.awesome.my')
 
 // this library allows you to sign 32 byte hashes (e.g. sha256 hashes)
 let plaintextHash = new Buffer('c764320a6820c75c82ec43523690bdfd547a077fd6fb805dc3fb9517d23ca527', 'hex')
