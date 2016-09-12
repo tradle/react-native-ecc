@@ -70,8 +70,7 @@ function keyPair (curve, cb) {
     curve: curve,
     bits: sizeInBits,
     service: serviceID,
-    accessGroup: accessGroup,
-    bits: sizeInBits
+    accessGroup: accessGroup
   }, function (err, base64pubKey) {
     cb(convertError(err), base64pubKey && keyFromPublic(toBuffer(base64pubKey)))
   })
