@@ -2,6 +2,7 @@
 
 import { NativeModules } from 'react-native'
 import { Buffer } from 'buffer'
+import hasher from 'hash.js'
 const RNECC = NativeModules.RNECC
 const encoding = 'base64'
 let serviceID
@@ -78,39 +79,43 @@ function keyPair (curve, cb) {
 
 /**
  * signs a hash
- * @param  {Buffer|String}   pub - pubKey corresponding to private key to sign hash with
- * @param  {Buffer|String}   hash - hash to sign
+ * @param  {Buffer|String}   options.pubKey - pubKey corresponding to private key to sign hash with
+ * @param  {Buffer|String}   options.data - data to sign
+ * @param  {String}          options.algorithm - algorithm to use to hash data before signing
  * @param  {Function} cb
  */
-function sign (pub, hash, cb) {
+function sign ({ pubKey, data, algorithm }, cb) {
   checkServiceID()
-  assert(Buffer.isBuffer(pub) || typeof pub === 'string')
-  assert(Buffer.isBuffer(hash) || typeof hash === 'string')
+  assert(Buffer.isBuffer(pubKey) || typeof pubKey === 'string')
+  assert(Buffer.isBuffer(data) || typeof data === 'string')
+
+  const hash = getHash(data, algorithm)
   assert(typeof cb === 'function')
 
   RNECC.sign({
     service: serviceID,
     accessGroup: accessGroup,
-    pub: toString(pub),
+    pub: toString(pubKey),
     hash: toString(hash)
   }, normalizeCallback(cb))
 }
 
 /**
  * verifies a signature
- * @param  {Buffer}   pubKey - pubKey to verify with
- * @param  {Buffer}   hash - hash that is signed by sig
- * @param  {Buffer}   sig - signature of hash
+ * @param  {Buffer|String}   options.pubKey - pubKey corresponding to private key to sign hash with
+ * @param  {Buffer|String}   options.data - signed data
+ * @param  {String}          options.algorithm - algorithm used to hash data before it was signed
+ * @param  {Buffer}          options.sig - signature
  * @param  {Function} cb
  */
-function verify (pubKey, hash, sig, cb) {
+function verify ({ pubKey, data, algorithm, sig }, cb) {
   pubKey = toString(pubKey)
 
+  assert(Buffer.isBuffer(data) || typeof data === 'string')
   assert(typeof pubKey === 'string')
-  assert(Buffer.isBuffer(hash))
-  assert(Buffer.isBuffer(sig))
   assert(typeof cb === 'function')
 
+  const hash = getHash(data, algorithm)
   RNECC.verify(pubKey, toString(hash), toString(sig), normalizeCallback(cb))
 }
 
@@ -141,8 +146,12 @@ function lookupKey (pubKey, cb) {
 function keyFromPublic (pubKeyBuf) {
   let base64pub = toString(pubKeyBuf)
   return {
-    sign: sign.bind(null, base64pub),
-    verify: verify.bind(null, base64pub),
+    sign: (opts, cb) => {
+      sign({ ...opts, pubKey: base64pub }, cb)
+    },
+    verify: (opts, cb) => {
+      verify({ ...opts, pubKey: base64pub }, cb)
+    },
     pub: pubKeyBuf
   }
 }
@@ -190,4 +199,11 @@ function normalizeCallback (cb) {
 
     return cb(null, result)
   }
+}
+
+function getHash (data, algorithm) {
+  if (!algorithm) return data
+
+  const arr = hasher[algorithm]().update(data).digest()
+  return new Buffer(arr)
 }
