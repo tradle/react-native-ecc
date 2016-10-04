@@ -277,15 +277,18 @@ RCT_EXPORT_METHOD(verify:(NSString *)base64pub
 -(OSStatus) importPubKey:(NSString *)base64pub {
 
   NSData *keyData = [[NSData alloc] initWithBase64EncodedString:base64pub options:0];
-  NSNumber* sizeInBits = [NSNumber numberWithInteger:[keyData length] * 8];
+  // one byte prefix, then key
+  // if first byte is 0x04, it's a regular public key, if it's 0x02 or 0x03, then it's compact
+  // the byteLength is compactLength - 1 or (regularLength - 1) / 2
+  // NSNumber* sizeInBits = byteLength * 8
   NSDictionary *saveDict = @{
                              (__bridge id) kSecClass : (__bridge id) kSecClassKey,
                              (__bridge id) kSecAttrKeyType : (__bridge id) kSecAttrKeyTypeEC,
                              (__bridge id) kSecAttrApplicationTag : [self toPublicIdentifier:base64pub],
                              (__bridge id) kSecAttrKeyClass : (__bridge id)kSecAttrKeyClassPublic,
                              (__bridge id) kSecValueData : keyData,
-                             (__bridge id) kSecAttrKeySizeInBits : sizeInBits,
-                             (__bridge id) kSecAttrEffectiveKeySize : sizeInBits,
+                             // (__bridge id) kSecAttrKeySizeInBits : sizeInBits,
+                             // (__bridge id) kSecAttrEffectiveKeySize : sizeInBits,
                              (__bridge id) kSecAttrCanDerive : (__bridge id) kCFBooleanFalse,
 //                             (__bridge id) kSecAttrCanEncrypt : (__bridge id) kCFBooleanTrue,
 //                             (__bridge id) kSecAttrCanDecrypt : (__bridge id) kCFBooleanFalse,
