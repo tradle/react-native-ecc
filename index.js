@@ -5,11 +5,24 @@ import { Buffer } from 'buffer'
 import hasher from 'hash.js'
 const RNECC = NativeModules.RNECC
 const encoding = 'base64'
+const curves = {
+  p192: 192,
+  p224: 224,
+  p256: 256,
+  p384: 384,
+  secp192r1: 192,
+  secp256r1: 256,
+  secp224r1: 224,
+  secp384r1: 384
+  // p521: 521 // should be supported, but SecKeyRawSign fails with OSStatus -1
+}
+
 let serviceID
 let accessGroup
 
 module.exports = {
   encoding,
+  curves,
   setServiceID,
   getServiceID,
   setAccessGroup,
@@ -40,18 +53,6 @@ function setAccessGroup (val) {
 
 function getAccessGroup () {
   return accessGroup
-}
-
-const curves = {
-  p192: 192,
-  p224: 224,
-  p256: 256,
-  p384: 384,
-  secp192r1: 192,
-  secp256r1: 256,
-  secp224r1: 224,
-  secp384r1: 384
-  // p521: 521 // should be supported, but SecKeyRawSign fails with OSStatus -1
 }
 
 /**
