@@ -1,9 +1,8 @@
 //
-//  RNCryptoUtils.m
-//  rnecc
+//  RNECC.m
 //
 //  Created by Mark Vayngrib on 12/24/15.
-//  Copyright © 2015 Facebook. All rights reserved.
+//  Copyright © 2015 Tradle, Inc. All rights reserved.
 //
 
 #import "RNECC.h"
@@ -37,7 +36,13 @@ RCT_EXPORT_METHOD(test)
 
   NSMutableData* hash = [NSMutableData dataWithLength:HASH_LENGTH];
   SecRandomCopyBytes(kSecRandomDefault, HASH_LENGTH, [hash mutableBytes]);
-  NSData* sig = [self sign:serviceId pub:pub hash:hash errMsg:&errMsg];
+  NSDictionary* options = @{
+                           @"service": serviceId,
+                           @"pub":pub,
+                           @"hash":[hash base64EncodedStringWithOptions:0]
+                           };
+
+  NSData* sig = [self sign:options errMsg:&errMsg];
   if (sig == nil) return;
 
   BOOL verified = [self verify:pub hash:hash sig:sig errMsg:&errMsg];
@@ -94,6 +99,10 @@ RCT_EXPORT_METHOD(generateECPair:(nonnull NSDictionary*) options
 
   NSString* serviceID = [options valueForKey:@"service"];
   NSNumber* sizeInBits = [options objectForKey:@"bits"];
+  if (sizeInBits == nil) {
+    sizeInBits = @256;
+  }
+
   NSString* accessGroup = [options valueForKey:@"accessGroup"];
   if (accessGroup) {
     [privateKeyAttrs setObject:accessGroup forKey:(__bridge id)kSecAttrAccessGroup];
@@ -106,7 +115,7 @@ RCT_EXPORT_METHOD(generateECPair:(nonnull NSDictionary*) options
 
   NSMutableDictionary *parameters = [NSMutableDictionary dictionaryWithDictionary: @{
                                (__bridge id)kSecAttrKeyType: (__bridge id)kSecAttrKeyTypeEC,
-                               (__bridge id)kSecAttrKeySizeInBits: @256,
+                               (__bridge id)kSecAttrKeySizeInBits: sizeInBits,
                                (__bridge id)kSecPrivateKeyAttrs: privateKeyAttrs,
                                (__bridge id)kSecPublicKeyAttrs: publicKeyAttrs,
                                }];
@@ -261,26 +270,36 @@ RCT_EXPORT_METHOD(sign:(nonnull NSDictionary *)options
 RCT_EXPORT_METHOD(verify:(NSString *)base64pub
                   hash:(NSString *)base64Hash
                   sig:(NSString *)sig
-             callback:(RCTResponseSenderBlock)callback) {
+                  callback:(RCTResponseSenderBlock)callback) {
+  [self verifyAsync:base64pub hash:base64Hash sig:sig callback:callback];
+}
 
-  NSData *hash = [[NSData alloc] initWithBase64EncodedString:base64Hash options:0];
-  if ([hash length] != HASH_LENGTH) {
-    NSString* message = [NSString stringWithFormat:@"hash parameter must be %d bytes", HASH_LENGTH];
-    callback(@[rneccMakeError(message)]);
-    return;
-  }
+-(OSStatus) importPubKey:(NSString *)base64pub {
 
-  dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-    NSData* sigData = [[NSData alloc] initWithBase64EncodedString:sig options:0];
-    NSString* errMsg = nil;
-    BOOL verified = [self verify:base64pub hash:hash sig:sigData errMsg:&errMsg];
-    if (!verified) {
-      callback(@[rneccMakeError(errMsg), @NO]);
-      return;
-    }
+  NSData *keyData = [[NSData alloc] initWithBase64EncodedString:base64pub options:0];
+  NSNumber* sizeInBits = [NSNumber numberWithInteger:[keyData length] * 8];
+  NSDictionary *saveDict = @{
+                             (__bridge id) kSecClass : (__bridge id) kSecClassKey,
+                             (__bridge id) kSecAttrKeyType : (__bridge id) kSecAttrKeyTypeEC,
+                             (__bridge id) kSecAttrApplicationTag : [self toPublicIdentifier:base64pub],
+                             (__bridge id) kSecAttrKeyClass : (__bridge id)kSecAttrKeyClassPublic,
+                             (__bridge id) kSecValueData : keyData,
+                             (__bridge id) kSecAttrKeySizeInBits : sizeInBits,
+                             (__bridge id) kSecAttrEffectiveKeySize : sizeInBits,
+                             (__bridge id) kSecAttrCanDerive : (__bridge id) kCFBooleanFalse,
+//                             (__bridge id) kSecAttrCanEncrypt : (__bridge id) kCFBooleanTrue,
+//                             (__bridge id) kSecAttrCanDecrypt : (__bridge id) kCFBooleanFalse,
+                             (__bridge id) kSecAttrCanVerify : (__bridge id) kCFBooleanTrue,
+                             (__bridge id) kSecAttrCanSign : (__bridge id) kCFBooleanFalse,
+                             (__bridge id) kSecAttrCanWrap : (__bridge id) kCFBooleanTrue,
+                             (__bridge id) kSecAttrCanUnwrap : (__bridge id) kCFBooleanFalse
+                             };
 
-    callback(@[[NSNull null], @YES]);
-  });
+  SecKeyRef savedKeyRef = NULL;
+  return SecItemAdd((__bridge CFDictionaryRef)saveDict, (CFTypeRef *)&savedKeyRef);
+//  if (sanityCheck != errSecSuccess) {
+//
+//  }
 }
 
 -(BOOL) verify:(NSString *)base64pub
@@ -288,10 +307,21 @@ RCT_EXPORT_METHOD(verify:(NSString *)base64pub
            sig:(NSData *)sig
          errMsg:(NSString **)errMsg {
 
-  SecKeyRef publicKey = [self getPublicKeyRef:[self toPublicIdentifier:base64pub]];
+  // we might already have the key in the keychain
+  SecKeyRef publicKey = [self getPublicKeyRef:base64pub];
   if (!publicKey) {
-    *errMsg = keychainStatusToString(errSecItemNotFound);
-    return false;
+    // import the key, then query for it
+    OSStatus status = [self importPubKey:base64pub];
+    if (status != errSecSuccess && status != errSecDuplicateItem) {
+      *errMsg = keychainStatusToString(errSecBadReq);
+      return false;
+    }
+
+    publicKey = [self getPublicKeyRef:base64pub];
+    if (!publicKey) {
+      *errMsg = keychainStatusToString(errSecItemNotFound);
+      return false;
+    }
   }
 
   OSStatus status = SecKeyRawVerify(
@@ -310,6 +340,30 @@ RCT_EXPORT_METHOD(verify:(NSString *)base64pub
   }
 
   return true;
+}
+
+-(void) verifyAsync:(NSString *)base64pub
+            hash:(NSString *)base64Hash
+             sig:(NSString *)sig
+        callback:(RCTResponseSenderBlock)callback {
+  NSData *hash = [[NSData alloc] initWithBase64EncodedString:base64Hash options:0];
+  if ([hash length] != HASH_LENGTH) {
+    NSString* message = [NSString stringWithFormat:@"hash parameter must be %d bytes", HASH_LENGTH];
+    callback(@[rneccMakeError(message)]);
+    return;
+  }
+
+  dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+    NSData* sigData = [[NSData alloc] initWithBase64EncodedString:sig options:0];
+    NSString* errMsg = nil;
+    BOOL verified = [self verify:base64pub hash:hash sig:sigData errMsg:&errMsg];
+    if (!verified) {
+      callback(@[rneccMakeError(errMsg), @NO]);
+      return;
+    }
+
+    callback(@[[NSNull null], @YES]);
+  });
 }
 
 -(OSStatus) tagKeyWithLabel:(NSString*)label tag:(NSString*)tag
@@ -352,9 +406,9 @@ RCT_EXPORT_METHOD(verify:(NSString *)base64pub
   return check;
 }
 
-- (NSString *) toPublicIdentifier:(NSString *)privIdentifier
+- (NSString *) toPublicIdentifier:(NSString *)pubIdentifier
 {
-  return [privIdentifier stringByAppendingString:@"-pub"];
+  return [pubIdentifier stringByAppendingString:@"-pub"];
 }
 
 - (NSString *) toUUIDIdentifier:(NSString *)privIdentifier
@@ -445,7 +499,7 @@ NSDictionary* rneccMakeError(NSString* errMsg)
   NSDictionary* keyAttrs = @{
                               (__bridge id)kSecClass: (__bridge id)kSecClassKey,
                               (__bridge id)kSecReturnRef: @YES,
-                              (__bridge id)kSecAttrApplicationTag: base64pub
+                              (__bridge id)kSecAttrApplicationTag: [self toPublicIdentifier:base64pub]
                               };
 
   SecKeyRef keyRef;
