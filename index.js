@@ -89,6 +89,8 @@ function sign ({ pubKey, data, algorithm }, cb) {
   assert(Buffer.isBuffer(pubKey) || typeof pubKey === 'string')
   assert(Buffer.isBuffer(data) || typeof data === 'string')
 
+  checkNotCompact(pubKey)
+
   const hash = getHash(data, algorithm)
   assert(typeof cb === 'function')
 
@@ -109,6 +111,7 @@ function sign ({ pubKey, data, algorithm }, cb) {
  * @param  {Function} cb
  */
 function verify ({ pubKey, data, algorithm, sig }, cb) {
+  checkNotCompact(pubKey)
   pubKey = toString(pubKey)
 
   assert(Buffer.isBuffer(data) || typeof data === 'string')
@@ -119,13 +122,14 @@ function verify ({ pubKey, data, algorithm, sig }, cb) {
   RNECC.verify(pubKey, toString(hash), toString(sig), normalizeCallback(cb))
 }
 
-function hasKey (pub, cb) {
+function hasKey (pubKey, cb) {
   checkServiceID()
-  assert(Buffer.isBuffer(pub) || typeof pub === 'string')
+  assert(Buffer.isBuffer(pubKey) || typeof pubKey === 'string')
+  checkNotCompact(pubKey)
   RNECC.hasKey({
     service: serviceID,
     accessGroup: accessGroup,
-    pub: toString(pub)
+    pub: toString(pubKey)
   }, normalizeCallback(cb))
 }
 
@@ -143,8 +147,9 @@ function lookupKey (pubKey, cb) {
  * @param  {Buffer} pub pubKey buffer for existing key (created with keyPair(...))
  * @return {Object} key
  */
-function keyFromPublic (pubKeyBuf) {
-  let base64pub = toString(pubKeyBuf)
+function keyFromPublic (pubKey) {
+  checkNotCompact(pubKey)
+  let base64pub = toString(pubKey)
   return {
     sign: (opts, cb) => {
       sign({ ...opts, pubKey: base64pub }, cb)
@@ -152,7 +157,7 @@ function keyFromPublic (pubKeyBuf) {
     verify: (opts, cb) => {
       verify({ ...opts, pubKey: base64pub }, cb)
     },
-    pub: pubKeyBuf
+    pub: pubKey
   }
 }
 
@@ -206,4 +211,8 @@ function getHash (data, algorithm) {
 
   const arr = hasher[algorithm]().update(data).digest()
   return new Buffer(arr)
+}
+
+function checkNotCompact (pub) {
+  assert(toBuffer(pub)[0] === 4, 'compact keys not supported')
 }
