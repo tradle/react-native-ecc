@@ -1,9 +1,10 @@
 'use strict'
 
-import { NativeModules } from 'react-native'
+import { NativeModules, Platform } from 'react-native'
 import { Buffer } from 'buffer'
 import hasher from 'hash.js'
 const RNECC = NativeModules.RNECC
+const isAndroid = Platform.OS === 'android'
 const encoding = 'base64'
 const curves = {
   p192: 192,
@@ -126,11 +127,15 @@ function hasKey (pubKey, cb) {
   checkServiceID()
   assert(Buffer.isBuffer(pubKey) || typeof pubKey === 'string')
   checkNotCompact(pubKey)
+  pubKey = toString(pubKey)
+  cb = normalizeCallback(cb)
+  if (isAndroid) return RNECC.hasKey(pubKey, cb)
+
   RNECC.hasKey({
     service: serviceID,
     accessGroup: accessGroup,
-    pub: toString(pubKey)
-  }, normalizeCallback(cb))
+    pub: pubKey
+  }, cb)
 }
 
 function lookupKey (pubKey, cb) {
