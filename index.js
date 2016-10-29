@@ -189,9 +189,11 @@ function convertError (error) {
   if (!error) {
     return null;
   }
-  var out = new Error(error.message);
-  out.key = error.key; // flow doesn't like this :(
-  return out;
+
+  var message = error.message || (typeof error === 'string' ? error : JSON.stringify(error))
+  var out = new Error(message)
+  out.key = error.key // flow doesn't like this :(
+  return out
 }
 
 function normalizeCallback (cb) {
