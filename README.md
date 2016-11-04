@@ -21,21 +21,28 @@ ec.setServiceID('be.excellent.to.each.other')
 // ec.setAccessGroup('dsadjsakd.com.app.awesome.my')
 
 // this library allows you to sign 32 byte hashes (e.g. sha256 hashes)
-let plaintextHash = new Buffer('c764320a6820c75c82ec43523690bdfd547a077fd6fb805dc3fb9517d23ca527', 'hex')
+const msg = new Buffer('hey ho')
 // check ec.curves for supported curves
-let curve = 'p256'
+const curve = 'p256'
 ec.keyPair(curve, function (err, key) {
   // pub tested for compatibility with npm library "elliptic"
-  let pub = key.pub
+  const pub = key.pub
   console.log('pub', key.pub.toString('hex'))
 
   // look up the key later like this:
-  // let key = ec.keyFromPublic(pub)
+  // const key = ec.keyFromPublic(pub)
 
-  key.sign(plaintextHash, function (err, sig) {
+  key.sign({
+    data: msg,
+    algorithm: 'sha256'
+  }, function (err, sig) {
     // signatures tested for compatibility with npm library "elliptic"
     console.log('sig', sig.toString('hex'))
-    key.verify(plaintextHash, sig, function (err, verified) {
+    key.verify({
+      algorithm: 'sha256',
+      data: msg,
+      sig: sig
+    }, function (err, verified) {
       console.log('verified:', verified)
     })
   })
