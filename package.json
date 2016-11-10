@@ -26,7 +26,7 @@
   },
   "homepage": "https://github.com/tradle/react-native-ecc",
   "dependencies": {
-    "buffer": "^3.6.0",
+    "buffer": "^4.9.1",
     "hash.js": "^1.0.3"
   }
 }
