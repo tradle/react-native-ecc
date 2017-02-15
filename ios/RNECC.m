@@ -7,7 +7,7 @@
 
 #import "RNECC.h"
 #include "CommonCrypto/CommonDigest.h"
-#import "RCTUtils.h"
+#import <React/RCTUtils.h>
 
 #define HASH_LENGTH             CC_SHA256_DIGEST_LENGTH
 #define kTypeOfSigPadding       kSecPaddingPKCS1
