@@ -1,6 +1,6 @@
 {
   "name": "react-native-ecc",
-  "version": "1.4.0",
+  "version": "2.0.0",
   "description": "basic elliptic curve crypto for React Native",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
