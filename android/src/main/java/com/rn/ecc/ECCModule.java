@@ -1,7 +1,10 @@
 package com.rn.ecc;
 
+import android.annotation.TargetApi;
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.os.Build;
+import android.security.KeyPairGeneratorSpec;
 import android.security.keystore.KeyGenParameterSpec;
 import android.security.keystore.KeyProperties;
 import android.util.Base64;
@@ -13,7 +16,9 @@ import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
 import com.facebook.react.bridge.ReadableMap;
 
+import java.io.IOException;
 import java.math.BigInteger;
+import java.security.GeneralSecurityException;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
 import java.security.KeyFactory;
@@ -21,6 +26,7 @@ import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.KeyStore;
 import java.security.NoSuchAlgorithmException;
+import java.security.NoSuchProviderException;
 import java.security.PrivateKey;
 import java.security.Signature;
 import java.security.interfaces.ECPublicKey;
@@ -29,18 +35,24 @@ import java.security.spec.ECPoint;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.Arrays;
+import java.util.Calendar;
+import java.util.GregorianCalendar;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+
+import javax.security.auth.x500.X500Principal;
 
 /**
  * Created by Jacob Gins on 6/2/2016.
  */
 public class ECCModule extends ReactContextBaseJavaModule {
+    private static final String KEYSTORE_PROVIDER_ANDROID_KEYSTORE = "AndroidKeyStore";
     private static final String KEY_TO_ALIAS_MAPPER = "key.to.alias.mapper";
     private static final Map<Integer, String> sizeToName = new HashMap<Integer, String>();
     private static final Map<Integer, byte[]> sizeToHead = new HashMap<Integer, byte[]>();
     private SharedPreferences pref;
+    private final boolean isModern = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M;
 
     static {
         sizeToName.put(192, "secp192r1");
@@ -60,12 +72,64 @@ public class ECCModule extends ReactContextBaseJavaModule {
         return "RNECC";
     }
 
+    private KeyPairGenerator getKeyPairGenerator(int sizeInBits, String keyAlias) throws
+            NoSuchAlgorithmException,
+            InvalidAlgorithmParameterException,
+            NoSuchProviderException {
+        return isModern ? getNewKeyPairGenerator(sizeInBits, keyAlias) : getOldKeyPairGenerator(sizeInBits, keyAlias);
+    }
+
+    @TargetApi(Build.VERSION_CODES.M)
+    private KeyPairGenerator getNewKeyPairGenerator(int sizeInBits, String keyAlias) throws
+            NoSuchAlgorithmException,
+            InvalidAlgorithmParameterException,
+            NoSuchProviderException {
+        KeyPairGenerator kpg = KeyPairGenerator.getInstance(
+                KeyProperties.KEY_ALGORITHM_EC, "AndroidKeyStore");
+        kpg.initialize(new KeyGenParameterSpec.Builder(
+                keyAlias,
+                KeyProperties.PURPOSE_SIGN | KeyProperties.PURPOSE_VERIFY)
+                .setDigests(KeyProperties.DIGEST_SHA256,
+                        KeyProperties.DIGEST_SHA512,
+                        KeyProperties.DIGEST_NONE)
+                .setKeySize(sizeInBits)
+                .build());
+
+        return kpg;
+    }
+
+    @TargetApi(Build.VERSION_CODES.LOLLIPOP)
+    private KeyPairGenerator getOldKeyPairGenerator(int sizeInBits, String keyAlias) throws
+            NoSuchAlgorithmException,
+            InvalidAlgorithmParameterException,
+            NoSuchProviderException {
+        Calendar start = new GregorianCalendar();
+        Calendar end = new GregorianCalendar();
+        end.add(Calendar.YEAR, 10);
+        KeyPairGenerator kpg = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_RSA, KEYSTORE_PROVIDER_ANDROID_KEYSTORE);
+        Context context = getReactApplicationContext().getApplicationContext();
+        kpg.initialize(new KeyPairGeneratorSpec.Builder(context)
+                .setAlias(keyAlias)
+                //                    KeyProperties.PURPOSE_SIGN | KeyProperties.PURPOSE_VERIFY)
+                //                    .setDigests(KeyProperties.DIGEST_SHA256,
+                //                                KeyProperties.DIGEST_SHA512,
+                //                                KeyProperties.DIGEST_NONE)
+                .setKeyType(KeyProperties.KEY_ALGORITHM_EC)
+                .setKeySize(sizeInBits)
+                .setStartDate(start.getTime())
+                .setEndDate(end.getTime())
+                .setSubject(new X500Principal("CN=" + keyAlias))
+                .setSerialNumber(BigInteger.valueOf(Math.abs(keyAlias.hashCode())))
+                .build());
+        return kpg;
+    }
+
     @ReactMethod
     public void generateECPair(ReadableMap map, Callback function) {
         int sizeInBits = map.getInt("bits");
         String keyAlias = UUID.randomUUID().toString();
         try {
-            KeyStore ks = KeyStore.getInstance("AndroidKeyStore");
+            KeyStore ks = KeyStore.getInstance(KEYSTORE_PROVIDER_ANDROID_KEYSTORE);
             ks.load(null);
 
             /*
@@ -74,16 +138,7 @@ public class ECCModule extends ReactContextBaseJavaModule {
              * used for signing or verification and only with SHA-256,
              * SHA-512 or NONE as the message digest.
             */
-            KeyPairGenerator kpg = KeyPairGenerator.getInstance(
-                    KeyProperties.KEY_ALGORITHM_EC, "AndroidKeyStore");
-            kpg.initialize(new KeyGenParameterSpec.Builder(
-                    keyAlias,
-                    KeyProperties.PURPOSE_SIGN | KeyProperties.PURPOSE_VERIFY)
-                    .setDigests(KeyProperties.DIGEST_SHA256,
-                                KeyProperties.DIGEST_SHA512,
-                                KeyProperties.DIGEST_NONE)
-                    .setKeySize(sizeInBits)
-                    .build());
+            KeyPairGenerator kpg = getKeyPairGenerator(sizeInBits, keyAlias);
             KeyPair kp = kpg.genKeyPair();
             ECPublicKey publicKey = (ECPublicKey)kp.getPublic();
             byte[] publicKeyBytes = encodeECPublicKey(publicKey);
@@ -102,55 +157,58 @@ public class ECCModule extends ReactContextBaseJavaModule {
 
     @ReactMethod
     public void hasKey(String publicKeyString, Callback function) {
-        boolean found;
         try {
-            String keyAlias = pref.getString(publicKeyString, null);
-            if (keyAlias == null) {
-                function.invoke("Unknown public key", null);
-                return;
-            }
-
-            KeyStore ks = KeyStore.getInstance("AndroidKeyStore");
-            ks.load(null);
-            KeyStore.Entry entry = ks.getEntry(keyAlias, null);
-            found = (entry instanceof KeyStore.PrivateKeyEntry)? true : false;
+            KeyStore.Entry entry = getEntry(publicKeyString);
+            function.invoke(null, entry instanceof KeyStore.PrivateKeyEntry);
         } catch (Exception ex) {
             Log.e("hasKey", "ERR", ex);
             function.invoke(ex.toString(), null);
             return;
         }
-        function.invoke(null, found);
+        function.invoke(null, false);
+    }
+
+    public KeyStore.Entry getEntry (String publicKeyString) throws GeneralSecurityException, IOException {
+        String keyAlias = pref.getString(publicKeyString, null);
+        if (keyAlias == null) {
+            return null;
+        }
+
+        KeyStore ks = KeyStore.getInstance(KEYSTORE_PROVIDER_ANDROID_KEYSTORE);
+        ks.load(null);
+        return ks.getEntry(keyAlias, null);
+    }
+
+    @Override
+    public Map<String, Object> getConstants() {
+        final Map<String, Object> constants = new HashMap<>();
+        constants.put("preHash", this.isModern);
+        return constants;
     }
 
     @ReactMethod
     public void sign(ReadableMap map, Callback function) {
         String publicKeyString = map.getString("pub");
-
-        String keyAlias = pref.getString(publicKeyString, null);
-        if (keyAlias == null) {
-            Log.e("RNECC", "key not found: " + publicKeyString);
-            function.invoke("Unknown public key", null);
-            return;
-        }
-
-        String hash = map.getString("hash");
+        String algorithm = getAlgorithm(map);
         String signature = "";
         try {
-            KeyStore ks = KeyStore.getInstance("AndroidKeyStore");
-            ks.load(null);
-
-            KeyStore.Entry entry = ks.getEntry(keyAlias, null);
-            if (!(entry instanceof KeyStore.PrivateKeyEntry)) {
-                function.invoke("Not an instance of a PrivateKeyEntry", null);
-                return;
-            }
-
-            Signature s = Signature.getInstance("NONEwithECDSA");
+            byte[] data = getDataProp(map);
+            KeyStore.Entry entry = getEntry(publicKeyString);
+            Signature s = Signature.getInstance(algorithm);
             PrivateKey key = ((KeyStore.PrivateKeyEntry) entry).getPrivateKey();
             s.initSign(key);
-            s.update(fromBase64(hash));
+            s.update(data);
             byte[] signatureBytes = s.sign();
             signature = toBase64(signatureBytes);
+//            WritableMap toVerify = new WritableNativeMap();
+//            toVerify.putString("sig", signature);
+//            toVerify.putString("pub", publicKeyString);
+//            toVerify.putString("data", map.getString("data"));
+//            toVerify.putString("algorithm", map.getString("algorithm"));
+//            boolean good = verify(toVerify);
+//            if (!good) {
+//                Log.e("sign", "ERR");
+//            }
         } catch (Exception ex) {
             Log.e("sign", "ERR", ex);
             function.invoke(ex.toString(), null);
@@ -161,23 +219,27 @@ public class ECCModule extends ReactContextBaseJavaModule {
     }
 
     @ReactMethod
-    public void verify(String publicKeyString, String data, String signature, Callback function) {
-        boolean verified = false;
+    public void verify(ReadableMap map, Callback function) {
         try {
-            byte[] pubKeyBytes = fromBase64(publicKeyString);
-            ECPublicKey publicKey = decodeECPublicKey(pubKeyBytes);
-            Signature sig = Signature.getInstance("NONEwithECDSA");
-            sig.initVerify(publicKey);
-            sig.update(fromBase64(data));
-            byte[] signatureBytes = fromBase64(signature);
-            verified = sig.verify(signatureBytes);
+            boolean verified = verify(map);
+            function.invoke(null, verified);
         } catch (Exception ex) {
             Log.e("RNECC", "verify error", ex);
             function.invoke(ex.toString(), null);
             return;
         }
+    }
 
-        function.invoke(null, verified);
+    private boolean verify (ReadableMap map) throws GeneralSecurityException {
+        byte[] data = getDataProp(map);
+        byte[] sigBytes = getSigProp(map);
+        byte[] pubKeyBytes = getPubProp(map);
+        String algorithm = getAlgorithm(map);
+        ECPublicKey publicKey = decodeECPublicKey(pubKeyBytes);
+        Signature sig = Signature.getInstance(algorithm);
+        sig.initVerify(publicKey);
+        sig.update(data);
+        return sig.verify(sigBytes);
     }
 
     private static byte[] encodeECPublicKey(ECPublicKey pubKey) throws InvalidKeyException {
@@ -262,7 +324,7 @@ public class ECCModule extends ReactContextBaseJavaModule {
      *  @return array of exactly len bytes
      */
     public static byte[] rectify(BigInteger bi, int len)
-                              throws InvalidKeyException {
+            throws InvalidKeyException {
         byte[] b = bi.toByteArray();
         if (b.length == len) {
             // just right
@@ -300,5 +362,30 @@ public class ECCModule extends ReactContextBaseJavaModule {
         System.arraycopy(bx, 0, b, 0, sublen);
         System.arraycopy(by, 0, b, sublen, sublen);
         return b;
+    }
+
+    private static byte[] getDataProp(ReadableMap map) {
+        if (map.hasKey("data")) {
+            return getBinaryProp(map, "data");
+        }
+
+        return getBinaryProp(map, "hash");
+    }
+
+    private static byte[] getSigProp (ReadableMap map) {
+        return getBinaryProp(map, "sig");
+    }
+
+    private static byte[] getPubProp (ReadableMap map) {
+        return getBinaryProp(map, "pub");
+    }
+
+    private static byte[] getBinaryProp (ReadableMap map, String propName) {
+        return fromBase64(map.getString(propName));
+    }
+
+    private static String getAlgorithm (ReadableMap map) {
+        String alg = map.hasKey("algorithm") ?  map.getString("algorithm") : "NONE";
+        return alg.toUpperCase() + "withECDSA";
     }
 }

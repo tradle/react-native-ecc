@@ -3,7 +3,8 @@
 import { NativeModules, Platform } from 'react-native'
 import { Buffer } from 'buffer'
 import hasher from 'hash.js'
-const RNECC = NativeModules.RNECC
+const { RNECC } = NativeModules
+const preHash = RNECC.preHash !== false
 const isAndroid = Platform.OS === 'android'
 const encoding = 'base64'
 const curves = {
@@ -92,15 +93,21 @@ function sign ({ pubKey, data, algorithm }, cb) {
 
   checkNotCompact(pubKey)
 
-  const hash = getHash(data, algorithm)
-  assert(typeof cb === 'function')
-
-  RNECC.sign({
+  const opts = {
     service: serviceID,
     accessGroup: accessGroup,
-    pub: toString(pubKey),
-    hash: toString(hash)
-  }, normalizeCallback(cb))
+    pub: pubKey
+  }
+
+  assert(typeof cb === 'function')
+  if (preHash) {
+    opts.hash = getHash(data, algorithm)
+  } else {
+    opts.data = data
+    opts.algorithm = algorithm
+  }
+
+  RNECC.sign(normalizeOpts(opts), normalizeCallback(cb))
 }
 
 /**
@@ -113,14 +120,32 @@ function sign ({ pubKey, data, algorithm }, cb) {
  */
 function verify ({ pubKey, data, algorithm, sig }, cb) {
   checkNotCompact(pubKey)
-  pubKey = toString(pubKey)
 
   assert(Buffer.isBuffer(data) || typeof data === 'string')
-  assert(typeof pubKey === 'string')
+  assert(typeof pubKey === 'string' || Buffer.isBuffer(pubKey))
   assert(typeof cb === 'function')
 
-  const hash = getHash(data, algorithm)
-  RNECC.verify(pubKey, toString(hash), toString(sig), normalizeCallback(cb))
+  const opts = {
+    pub: pubKey,
+    sig,
+  }
+
+  if (preHash) {
+    opts.hash = getHash(data, algorithm)
+  } else {
+    opts.data = data
+    opts.algorithm = algorithm
+  }
+
+  RNECC.verify(normalizeOpts(opts), normalizeCallback(cb))
+}
+
+function normalizeOpts (opts) {
+  ;['data', 'hash', 'pub', 'sig'].forEach(prop => {
+    if (opts[prop]) opts[prop] = toString(opts[prop])
+  })
+
+  return opts
 }
 
 function hasKey (pubKey, cb) {

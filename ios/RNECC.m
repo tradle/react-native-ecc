@@ -267,11 +267,12 @@ RCT_EXPORT_METHOD(sign:(nonnull NSDictionary *)options
   return sigData;
 }
 
-RCT_EXPORT_METHOD(verify:(NSString *)base64pub
-                  hash:(NSString *)base64Hash
-                  sig:(NSString *)sig
+RCT_EXPORT_METHOD(verify:(nonnull NSDictionary *)options
                   callback:(RCTResponseSenderBlock)callback) {
-  [self verifyAsync:base64pub hash:base64Hash sig:sig callback:callback];
+  NSString* pub = [options valueForKey:@"pub"];
+  NSString* hash = [options valueForKey:@"hash"];
+  NSString* sig = [options valueForKey:@"sig"];
+  [self doVerify:pub hash:hash sig:sig callback:callback];
 }
 
 -(OSStatus) importPubKey:(NSString *)base64pub {
@@ -345,11 +346,11 @@ RCT_EXPORT_METHOD(verify:(NSString *)base64pub
   return true;
 }
 
--(void) verifyAsync:(NSString *)base64pub
-            hash:(NSString *)base64Hash
+-(void) doVerify:(NSString *)base64pub
+            hash:(NSString *)base64hash
              sig:(NSString *)sig
         callback:(RCTResponseSenderBlock)callback {
-  NSData *hash = [[NSData alloc] initWithBase64EncodedString:base64Hash options:0];
+  NSData *hash = [[NSData alloc] initWithBase64EncodedString:base64hash options:0];
   if ([hash length] != HASH_LENGTH) {
     NSString* message = [NSString stringWithFormat:@"hash parameter must be %d bytes", HASH_LENGTH];
     callback(@[rneccMakeError(message)]);
