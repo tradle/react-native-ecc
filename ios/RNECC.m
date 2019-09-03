@@ -73,10 +73,10 @@ RCT_EXPORT_METHOD(generateECPair:(nonnull NSDictionary*) options
 
   // Should be the secret invalidated when passcode is removed? If not then use `kSecAttrAccessibleWhenUnlocked`.
   sacObject = SecAccessControlCreateWithFlags(kCFAllocatorDefault,
-                                              kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly,
-//                                              kSecAccessControlTouchIDAny | kSecAccessControlPrivateKeyUsage,
-//                                              kSecAccessControlUserPresence,
-                                              kNilOptions,
+                                              kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+                                              kSecAccessControlUserPresence | kSecAccessControlPrivateKeyUsage,
+                                              //                                              kSecAccessControlTouchIDAny | kSecAccessControlPrivateKeyUsage,
+                                              //                                              kSecAccessControlUserPresence,
                                               &sacErr);
 
   if (sacErr) {
@@ -205,6 +205,125 @@ RCT_EXPORT_METHOD(hasKey:(nonnull NSDictionary *)options
     }
   });
 }
+
+RCT_EXPORT_METHOD(encrypt:(nonnull NSDictionary *)options
+                  callback:(RCTResponseSenderBlock)callback) {
+  dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+    NSString* errMsg;
+    NSData* cipherText = [self encrypt:options errMsg:&errMsg];
+    if (!cipherText) {
+      callback(@[rneccMakeError(errMsg)]);
+      return;
+    }
+
+    NSString* base64cipherText = [cipherText base64EncodedStringWithOptions:0];
+    callback(@[[NSNull null], base64cipherText]);
+  });
+}
+
+-(NSData *)encrypt:(nonnull NSDictionary *)options
+             errMsg:(NSString **) errMsg {
+  NSString* base64pub = [options valueForKey:@"pub"];
+  NSString* base64data = [options valueForKey:@"data"];
+
+  SecKeyRef publicKey = [self getPublicKeyRef:base64pub];
+  if (!publicKey) {
+    *errMsg = @"can't find public key";
+    return nil;
+  }
+
+  NSData *data = [[NSData alloc] initWithBase64EncodedString:base64data options:0];
+
+  SecKeyAlgorithm algorithm = kSecKeyAlgorithmECIESEncryptionStandardX963SHA512AESGCM;
+  BOOL canEncrypt = SecKeyIsAlgorithmSupported(publicKey,
+                                               kSecKeyOperationTypeEncrypt,
+                                               algorithm);
+  if(!canEncrypt) {
+    *errMsg = @"can't encrypt";
+    return nil;
+  }
+  BOOL isSizeCorrect = ([data length] < (SecKeyGetBlockSize(publicKey)-130));
+  if(! isSizeCorrect) {
+    *errMsg = @"size is not correct";
+    return nil;
+  }
+
+   NSData* cipherText = nil;
+   CFErrorRef error = NULL;
+
+   cipherText = (NSData*)CFBridgingRelease(      // ARC takes ownership
+                                           SecKeyCreateEncryptedData(publicKey,
+                                                                     algorithm,
+                                                                     (__bridge CFDataRef)data,
+                                                                     &error));
+
+    CFRelease(publicKey);
+   if (!cipherText) {
+     NSError *err = CFBridgingRelease(error);  // ARC takes ownership
+     *errMsg = [err description];
+     return nil;
+   }
+  return cipherText;
+}
+
+RCT_EXPORT_METHOD(decrypt:(nonnull NSDictionary *)options
+                  callback:(RCTResponseSenderBlock)callback) {
+dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+  NSString* errMsg;
+  NSData* clearText = [self decrypt:options errMsg:&errMsg];
+    if (!clearText) {
+      callback(@[rneccMakeError(errMsg)]);
+      return;
+    }
+
+    NSString* base64clearText = [clearText base64EncodedStringWithOptions:0];
+    callback(@[[NSNull null], base64clearText]);
+  });
+}
+
+-(NSData *)decrypt: (nonnull NSDictionary*)options
+       errMsg:(NSString **) errMsg {
+
+   NSString* base64pub = [options valueForKey:@"pub"];
+   NSString* base64cipherText = [options valueForKey:@"data"];
+  SecKeyRef publicKey = [self getPublicKeyRef:base64pub];
+
+  OSStatus status;
+  NSData *cipherText = [[NSData alloc] initWithBase64EncodedString:base64cipherText options:0];
+
+  SecKeyRef privateKey = [self getPrivateKeyRef:options status:&status];
+  if (!privateKey) {
+    *errMsg = keychainStatusToString(status);
+    return nil;
+  }
+
+  BOOL canDecrypt = SecKeyIsAlgorithmSupported(privateKey,
+                                              kSecKeyOperationTypeDecrypt,
+                                               kSecKeyAlgorithmECIESEncryptionStandardX963SHA512AESGCM);
+  if(!canDecrypt) {
+    *errMsg = @"can't encrypt";
+    return nil;
+  }
+
+  NSData* clearText = nil;
+
+  CFErrorRef error = NULL;
+  clearText = (NSData*)CFBridgingRelease(       // ARC takes ownership
+                                         SecKeyCreateDecryptedData(privateKey,
+                                                                   kSecKeyAlgorithmECIESEncryptionStandardX963SHA512AESGCM,
+                                                                   (__bridge CFDataRef)cipherText,
+                                                                   &error));
+      CFRelease(privateKey);
+      CFRelease(publicKey);
+  if (!clearText) {
+    NSError *err = CFBridgingRelease(error);  // ARC takes ownership
+     *errMsg = [err description];
+    return nil;
+  }
+  return clearText;
+}
+
+
 
 RCT_EXPORT_METHOD(sign:(nonnull NSDictionary *)options
                   //                  withAuthenticationPrompt:(NSString *)prompt

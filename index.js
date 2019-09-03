@@ -3,8 +3,8 @@
 import { NativeModules, Platform } from 'react-native'
 import { Buffer } from 'buffer'
 import hasher from 'hash.js'
-const { RNECC } = NativeModules
-const preHash = RNECC.preHash !== false
+const { RNECC } = NativeModules;
+const preHash = RNECC.preHash && RNECC.preHash !== false
 const isAndroid = Platform.OS === 'android'
 const encoding = 'base64'
 const curves = {
@@ -34,7 +34,9 @@ module.exports = {
   verify,
   lookupKey,
   hasKey,
-  keyFromPublic
+  keyFromPublic,
+  encrypt,
+  decrypt
 }
 
 function setServiceID (id) {
@@ -138,6 +140,51 @@ function verify ({ pubKey, data, algorithm, sig }, cb) {
   }
 
   RNECC.verify(normalizeOpts(opts), normalizeCallback(cb))
+}
+
+/**
+ * Decrypt a piece of cipher text
+ * @param pubKey {Buffer}  options.pubKey - pubKey corresponding to private key to decrypt the cipher text
+ * @param data   {Buffer}  options.data - cipher text to decrypt
+ * @param cb     {Function}       callback function
+ */
+function decrypt({pubKey, data}, cb) {
+  checkServiceID()
+  assert(Buffer.isBuffer(pubKey) || typeof pubKey === 'string')
+  assert(Buffer.isBuffer(data) || typeof data === 'string')
+
+  checkNotCompact(pubKey)
+
+  const opts = {
+    service: serviceID,
+    accessGroup: accessGroup,
+    pub: pubKey,
+    data,
+  }
+
+  assert(typeof cb === 'function')
+
+  RNECC.decrypt(normalizeOpts(opts), normalizeCallback(cb))
+}
+
+/**
+ * Encrypt a piece of cipher text
+ * @param pubKey {Buffer}  options.pubKey - pubKey key to encrypt the clear text
+ * @param data   {Buffer}  options.data - clear text to encrypt
+ * @param cb     {Function}       callback function
+ */
+function encrypt({pubKey, data}, cb) {
+  checkNotCompact(pubKey)
+
+  assert(Buffer.isBuffer(data) || typeof data === 'string')
+  assert(typeof pubKey === 'string' || Buffer.isBuffer(pubKey))
+  assert(typeof cb === 'function')
+
+  const opts = {
+    pub: pubKey,
+    data,
+  };
+  RNECC.encrypt(normalizeOpts(opts), normalizeCallback(cb));
 }
 
 function normalizeOpts (opts) {
