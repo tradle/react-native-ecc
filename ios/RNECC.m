@@ -124,7 +124,7 @@ RCT_EXPORT_METHOD(generateECPair:(nonnull NSDictionary*) options
     [parameters setObject:accessGroup forKey:(__bridge id)kSecAttrAccessGroup];
   }
 
-  if (sizeInBits == @256 && !isSimulator && floor(NSFoundationVersionNumber) > NSFoundationVersionNumber_iOS_8_0) {
+  if ([sizeInBits isEqualToNumber: @256] && !isSimulator && floor(NSFoundationVersionNumber) > NSFoundationVersionNumber_iOS_8_0) {
     NSOperatingSystemVersion os = [[NSProcessInfo processInfo] operatingSystemVersion];
     if (os.majorVersion >= 9) {
       [parameters setObject:(__bridge id)kSecAttrTokenIDSecureEnclave forKey:(__bridge id)kSecAttrTokenID];
