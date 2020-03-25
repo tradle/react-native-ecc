@@ -18,4 +18,6 @@
 - (NSString *) uuidString;
 - (NSData *)sign:(nonnull NSDictionary*)options errMsg:(NSString **) errMsg;
 - (BOOL) verify:(NSString *)base64pub hash:(NSData *)hash sig:(NSData *)sig errMsg:(NSString **)errMsg;
+- (NSData *)encrypt: (nonnull NSDictionary*)options errMsg:(NSString **) errMsg;
+- (NSData *)decrypt: (nonnull NSDictionary*)options errMsg:(NSString **) errMsg;
 @end
