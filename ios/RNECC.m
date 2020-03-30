@@ -55,7 +55,7 @@ RCT_EXPORT_METHOD(generateECPair:(nonnull NSDictionary*) options
     NSString* errMsg;
     NSString* base64pub = [self generateECPair:options errMsg:&errMsg];
     if (base64pub == nil) {
-      return callback(@[rneccMakeError(errMsg)]);
+      return callback(@[errMsg]);
     } else {
       callback(@[[NSNull null], base64pub]);
     }
@@ -71,12 +71,9 @@ RCT_EXPORT_METHOD(generateECPair:(nonnull NSDictionary*) options
   CFErrorRef sacErr = NULL;
   SecAccessControlRef sacObject;
 
-  // Should be the secret invalidated when passcode is removed? If not then use `kSecAttrAccessibleWhenUnlocked`.
   sacObject = SecAccessControlCreateWithFlags(kCFAllocatorDefault,
-                                              kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly,
-//                                              kSecAccessControlTouchIDAny | kSecAccessControlPrivateKeyUsage,
-//                                              kSecAccessControlUserPresence,
-                                              kNilOptions,
+                                              kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+                                              kSecAccessControlBiometryAny,
                                               &sacErr);
 
   if (sacErr) {
@@ -201,7 +198,7 @@ RCT_EXPORT_METHOD(hasKey:(nonnull NSDictionary *)options
     } else if (status == errSecItemNotFound) {
       callback(@[[NSNull null], @NO]);
     } else {
-      callback(@[rneccMakeError(keychainStatusToString(status))]);
+      callback(@[keychainStatusToString(status)]);
     }
   });
 }
@@ -214,7 +211,7 @@ RCT_EXPORT_METHOD(sign:(nonnull NSDictionary *)options
     NSString* errMsg;
     NSData* sig = [self sign:options errMsg:&errMsg];
     if (!sig) {
-      callback(@[rneccMakeError(errMsg)]);
+      callback(@[errMsg]);
       return;
     }
 
@@ -353,7 +350,7 @@ RCT_EXPORT_METHOD(verify:(nonnull NSDictionary *)options
   NSData *hash = [[NSData alloc] initWithBase64EncodedString:base64hash options:0];
   if ([hash length] != HASH_LENGTH) {
     NSString* message = [NSString stringWithFormat:@"hash parameter must be %d bytes", HASH_LENGTH];
-    callback(@[rneccMakeError(message)]);
+    callback(@[message]);
     return;
   }
 
@@ -362,7 +359,7 @@ RCT_EXPORT_METHOD(verify:(nonnull NSDictionary *)options
     NSString* errMsg = nil;
     BOOL verified = [self verify:base64pub hash:hash sig:sigData errMsg:&errMsg];
     if (!verified) {
-      callback(@[rneccMakeError(errMsg), @NO]);
+      callback(@[errMsg, @NO]);
       return;
     }
 
@@ -420,11 +417,6 @@ RCT_EXPORT_METHOD(verify:(nonnull NSDictionary *)options
   return [privIdentifier stringByAppendingString:@"-uuid"];
 }
 
-NSDictionary* rneccMakeError(NSString* errMsg)
-{
-  return RCTMakeAndLogError(errMsg, nil, nil);
-}
-
 -(NSData *)getPublicKeyDataByLabel:(NSString *)label
 {
 
@@ -446,13 +438,14 @@ NSDictionary* rneccMakeError(NSString* errMsg)
   return CFBridgingRelease(result);
 }
 
--(SecKeyRef)getKeyRefByLabel:(NSString *)label status:(OSStatus*)status
+-(SecKeyRef)getKeyRefByLabel:(NSString *)label status:(OSStatus*)status promptMessage:(NSString*)promptMessage
 {
   SecKeyRef keyRef;
   *status = SecItemCopyMatching((__bridge CFDictionaryRef)@{
     (__bridge id)kSecClass: (__bridge id)kSecClassKey,
     (__bridge id)kSecReturnRef: @YES,
-    (__bridge id)kSecAttrApplicationLabel:label
+    (__bridge id)kSecAttrApplicationLabel:label,
+    (__bridge id)kSecUseOperationPrompt:promptMessage
   }, (CFTypeRef *)&keyRef);
 
   if (*status != errSecSuccess)
@@ -473,6 +466,7 @@ NSDictionary* rneccMakeError(NSString* errMsg)
 
   NSString* serviceID = [options valueForKey:@"service"];
   NSString* base64pub = [options valueForKey:@"pub"];
+  NSString* promptMessage = [options valueForKey:@"promptMessage"];
 
   [uuidAttrs setObject:serviceID forKey:(__bridge id)kSecAttrService];
 
@@ -495,7 +489,7 @@ NSDictionary* rneccMakeError(NSString* errMsg)
 
   found = (__bridge NSDictionary*)(foundTypeRef);
   NSString* uuid = [found objectForKey:(__bridge id)(kSecAttrGeneric)];
-  return [self getKeyRefByLabel:uuid status:status];
+  return [self getKeyRefByLabel:uuid status:status promptMessage:promptMessage];
 }
 
 -(SecKeyRef)getPublicKeyRef:(NSString *)base64pub
@@ -525,31 +519,7 @@ NSDictionary* rneccMakeError(NSString* errMsg)
 }
 
 NSString *keychainStatusToString(OSStatus status) {
-  NSString *message = [NSString stringWithFormat:@"%ld", (long)status];
-
-  switch (status) {
-    case errSecSuccess:
-      message = @"success";
-      break;
-
-    case errSecDuplicateItem:
-      message = @"error item already exists";
-      break;
-
-    case errSecItemNotFound :
-      message = @"error item not found";
-      break;
-
-    case errSecAuthFailed:
-      message = @"error item authentication failed";
-      break;
-
-    default:
-      message = [NSString stringWithFormat:@"error with OSStatus %d", status];
-      break;
-  }
-
-  return message;
+  return [NSString stringWithFormat:@"%ld", (long)status];
 }
 
 @end
