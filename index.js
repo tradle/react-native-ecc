@@ -1,216 +1,129 @@
 'use strict'
 
 import { NativeModules, Platform } from 'react-native'
+import bigInt from 'big-integer';
 import { Buffer } from 'buffer'
 import hasher from 'hash.js'
+import ECCError, { ErrorCode, AndroidErrorCode, IOSErrorCode } from './ECCError';
+
 const { RNECC } = NativeModules
-const preHash = RNECC.preHash !== false
-const isAndroid = Platform.OS === 'android'
+
+const algorithm = 'sha256'
 const encoding = 'base64'
-const curves = {
-  p192: 192,
-  p224: 224,
-  p256: 256,
-  p384: 384,
-  secp192r1: 192,
-  secp256r1: 256,
-  secp224r1: 224,
-  secp384r1: 384
-  // p521: 521 // should be supported, but SecKeyRawSign fails with OSStatus -1
-}
+const curve = 'secp256r1'
+const bits = 256
 
 let serviceID
 let accessGroup
 
-module.exports = {
-  encoding,
-  curves,
-  setServiceID,
-  getServiceID,
-  setAccessGroup,
-  getAccessGroup,
-  keyPair,
-  sign,
-  verify,
-  lookupKey,
-  hasKey,
-  keyFromPublic
-}
-
-function setServiceID (id) {
+function setServiceID(id) {
   if (serviceID) throw new Error('serviceID can only be set once')
-
   serviceID = id
 }
 
-function getServiceID () {
-  return serviceID
-}
-
-function setAccessGroup (val) {
-  if (accessGroup) throw new Error('accessGroup can only be set once')
-
-  accessGroup = val
-}
-
-function getAccessGroup () {
-  return accessGroup
-}
-
 /**
- * generates a new key pair, calls back with pub key
- * @param  {String}   curve - elliptic curve
- * @param  {Function} cb - calls back with a new key with the API: { sign, verify, pub }
+ * Generates public and private keys.
+ *
+ * The public key is returned with the given callback.
+ * The private key is saved in the Keychain/Keystore.
+ *
+ * @return {Promise} It will reject with an error if the generation fails, it
+ * will resolve with the public key in base64 if it succeeds.
  */
-function keyPair (curve, cb) {
+function generateKeys() {
   checkServiceID()
-  assert(typeof curve === 'string')
-  assert(typeof cb === 'function')
-  if (!(curve in curves)) throw new Error('unsupported curve')
 
-  let sizeInBits = curves[curve]
-  RNECC.generateECPair({
-    curve: curve,
-    bits: sizeInBits,
-    service: serviceID,
-    accessGroup: accessGroup
-  }, function (err, base64pubKey) {
-    cb(convertError(err), base64pubKey && keyFromPublic(toBuffer(base64pubKey)))
-  })
-}
-
-/**
- * signs a hash
- * @param  {Buffer|String}   options.pubKey - pubKey corresponding to private key to sign hash with
- * @param  {Buffer|String}   options.data - data to sign
- * @param  {String}          options.algorithm - algorithm to use to hash data before signing
- * @param  {Function} cb
- */
-function sign ({ pubKey, data, algorithm, promptMessage }, cb) {
-  checkServiceID()
-  assert(Buffer.isBuffer(pubKey) || typeof pubKey === 'string')
-  assert(Buffer.isBuffer(data) || typeof data === 'string')
-
-  checkNotCompact(pubKey)
-
-  const opts = {
+  return promisify(RNECC.generateECPair, {
     service: serviceID,
     accessGroup: accessGroup,
-    pub: pubKey
-  }
-
-  if(promptMessage){
-    opts.promptMessage = promptMessage;
-  }
-
-  assert(typeof cb === 'function')
-  if (preHash) {
-    opts.hash = getHash(data, algorithm)
-  } else {
-    opts.data = data
-    opts.algorithm = algorithm
-  }
-
-  RNECC.sign(normalizeOpts(opts), normalizeCallback(cb))
+    curve,
+    bits,
+  })
 }
 
 /**
- * verifies a signature
- * @param  {Buffer|String}   options.pubKey - pubKey corresponding to private key to sign hash with
- * @param  {Buffer|String}   options.data - signed data
- * @param  {String}          options.algorithm - algorithm used to hash data before it was signed
- * @param  {Buffer}          options.sig - signature
- * @param  {Function} cb
+ * Sign some data with a given public key.
+ *
+ * The user will be prompted with biometric authentication to sign data.
+ *
+ * @param {string} publicKey Public key to use to sign given data. The key must
+ * have been generated with the `generateKeys` method.
+ * @param {string} data Data to sign.
+ * @param {string} promptTitle Title of the biometric prompt.
+ * @param {string} promptMessage Message of the biometric prompt.
+ * @param {string} promptCancel Label of cancel button of the biometric prompt.
+ * @return {Promise} Will reject with an error if the signing fails, will
+ * resolve with signed data if it succeeds.
  */
-function verify ({ pubKey, data, algorithm, sig }, cb) {
-  checkNotCompact(pubKey)
-
-  assert(Buffer.isBuffer(data) || typeof data === 'string')
-  assert(typeof pubKey === 'string' || Buffer.isBuffer(pubKey))
-  assert(typeof cb === 'function')
-
-  const opts = {
-    pub: pubKey,
-    sig,
-  }
-
-  if (preHash) {
-    opts.hash = getHash(data, algorithm)
-  } else {
-    opts.data = data
-    opts.algorithm = algorithm
-  }
-
-  RNECC.verify(normalizeOpts(opts), normalizeCallback(cb))
-}
-
-function normalizeOpts (opts) {
-  ;['data', 'hash', 'pub', 'sig'].forEach(prop => {
-    if (opts[prop]) opts[prop] = toString(opts[prop])
-  })
-
-  return opts
-}
-
-function hasKey (pubKey, cb) {
+function sign({ publicKey, data, promptTitle, promptMessage, promptCancel }) {
   checkServiceID()
-  assert(Buffer.isBuffer(pubKey) || typeof pubKey === 'string')
-  checkNotCompact(pubKey)
-  pubKey = toString(pubKey)
-  cb = normalizeCallback(cb)
-  if (isAndroid) return RNECC.hasKey(pubKey, cb)
+  assert(typeof publicKey === 'string')
+  assert(typeof data === 'string')
 
-  RNECC.hasKey({
+  return promisify(RNECC.sign, {
     service: serviceID,
     accessGroup: accessGroup,
-    pub: pubKey
-  }, cb)
-}
-
-function lookupKey (pubKey, cb) {
-  hasKey(pubKey, function (err, exists) {
-    if (err) return cb(convertError(err))
-    if (exists) return cb(null, keyFromPublic(pubKey))
-
-    cb(new Error('NotFound'))
+    pub: publicKey,
+    hash: getHash(data),
+    promptTitle,
+    promptMessage,
+    promptCancel,
   })
 }
 
 /**
- * Returns a key with the API as the one returned by keyPair(...)
- * @param  {Buffer} pub pubKey buffer for existing key (created with keyPair(...))
- * @return {Object} key
+ * Dismiss signing modal if open.
+ *
+ * This method only works on Android. On iOS it is not possible to
+ * programmatically dismiss the dialog (everything is handled by the Keychain).
+ * We still implement the method for iOS to avoid compatibility issues.
+ *
+ * @return {Promise} It will always resolve when the operation completes.
  */
-function keyFromPublic (pubKey) {
-  checkNotCompact(pubKey)
-  let base64pub = toString(pubKey)
-  return {
-    sign: (opts, cb) => {
-      sign({ ...opts, pubKey: base64pub }, cb)
-    },
-    verify: (opts, cb) => {
-      verify({ ...opts, pubKey: base64pub }, cb)
-    },
-    pub: pubKey
-  }
+function cancelSigning() {
+  return promisify(RNECC.cancelSigning, {})
+}
+
+/**
+ * Compute x and y coordinates for a given base64 public key.
+ *
+ * @param {string} publicKeyBase64 Public key in base 64.
+ * @return {{ x: string, y: string }} Coordinates of the given public key,
+ * represented as strings because they are too long for numbers.
+ */
+function computeCoordinates(publicKeyBase64) {
+  assert(typeof publicKeyBase64 === 'string')
+
+  const publicKeyHex = Buffer.from(publicKeyBase64, 'base64').toString('hex');
+  const publicKeyHexNo4 = publicKeyHex.slice(2);
+
+  const xHex = publicKeyHexNo4.slice(0, 64);
+  const yHex = publicKeyHexNo4.slice(64, 128);
+
+  const x = bigInt(xHex, 16).toString();
+  const y = bigInt(yHex, 16).toString();
+
+  return { x, y };
+}
+
+function promisify(fnWithCallback, params) {
+  return new Promise((resolve, reject) => {
+    fnWithCallback(params, (nativeErrorCode, response) => {
+      if (nativeErrorCode) {
+        const errorCode = Platform.select({
+          android: AndroidErrorCode[nativeErrorCode],
+          ios: IOSErrorCode[nativeErrorCode],
+        }) || ErrorCode.Generic;
+        reject(new ECCError(errorCode, nativeErrorCode))
+      } else {
+        resolve(response)
+      }
+    });
+  });
 }
 
 function assert (statement, errMsg) {
   if (!statement) throw new Error(errMsg || 'assertion failed')
-}
-
-function toString (buf) {
-  if (typeof buf === 'string') return buf
-  if (Buffer.isBuffer(buf)) return buf.toString(encoding)
-
-  return buf.toString()
-}
-
-function toBuffer (str) {
-  if (Buffer.isBuffer(str)) return str
-  if (typeof str === 'string') return new Buffer(str, encoding)
-
-  throw new Error('expected string or buffer')
 }
 
 function checkServiceID () {
@@ -219,36 +132,17 @@ function checkServiceID () {
   }
 }
 
-function convertError (error) {
-  if (!error) {
-    return null;
-  }
-
-  var message = error.message || (typeof error === 'string' ? error : JSON.stringify(error))
-  var out = new Error(message)
-  out.key = error.key // flow doesn't like this :(
-  return out
-}
-
-function normalizeCallback (cb) {
-  return function (err, result) {
-    if (err) return cb(convertError(err))
-
-    result = typeof result === 'string'
-      ? toBuffer(result)
-      : result
-
-    return cb(null, result)
-  }
-}
-
-function getHash (data, algorithm) {
-  if (!algorithm) return data
-
+function getHash (data) {
   const arr = hasher[algorithm]().update(data).digest()
-  return new Buffer(arr)
+  return new Buffer(arr).toString(encoding)
 }
 
-function checkNotCompact (pub) {
-  assert(toBuffer(pub)[0] === 4, 'compact keys not supported')
-}
+export default {
+  setServiceID,
+  generateKeys,
+  sign,
+  cancelSigning,
+  computeCoordinates,
+  ECCError,
+  ErrorCode,
+};

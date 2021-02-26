@@ -26,7 +26,12 @@
   },
   "homepage": "https://github.com/tradle/react-native-ecc",
   "dependencies": {
+    "big-integer": "^1.6.48",
     "buffer": "^4.9.1",
     "hash.js": "^1.0.3"
-  }
+  },
+  "typescript": {
+    "definition": "typings/react-native-ecc.d.ts"
+  },
+  "types": "typings/react-native-ecc.d.ts"
 }

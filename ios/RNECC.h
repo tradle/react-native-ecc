@@ -17,5 +17,6 @@
 - (OSStatus) tagKeyWithLabel:(NSString*)label tag:(NSString*)tag;
 - (NSString *) uuidString;
 - (NSData *)sign:(nonnull NSDictionary*)options errMsg:(NSString **) errMsg;
+- (NSData *)cancelSigning:(nonnull NSDictionary*)options errMsg:(NSString **) errMsg;
 - (BOOL) verify:(NSString *)base64pub hash:(NSData *)hash sig:(NSData *)sig errMsg:(NSString **)errMsg;
 @end

@@ -264,6 +264,12 @@ RCT_EXPORT_METHOD(sign:(nonnull NSDictionary *)options
   return sigData;
 }
 
+RCT_EXPORT_METHOD(cancelSigning:(nonnull NSDictionary *)options
+                  callback:(RCTResponseSenderBlock)callback) {
+  // Do nothing, invoke callback as if everything went well.
+  callback(@[[NSNull null], [NSNull null]]);
+}
+
 RCT_EXPORT_METHOD(verify:(nonnull NSDictionary *)options
                   callback:(RCTResponseSenderBlock)callback) {
   NSString* pub = [options valueForKey:@"pub"];
