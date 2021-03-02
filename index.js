@@ -82,6 +82,7 @@ function sign({ publicKey, data, promptTitle, promptMessage, promptCancel }) {
  */
 function cancelSigning() {
   return promisify(RNECC.cancelSigning, {})
+    .catch(() => { /* Force promise to always resolve */ })
 }
 
 /**
