@@ -19,6 +19,7 @@ declare module 'react-native-ecc' {
     BiometryNotAvailable = 'biometry-not-available',
     LockoutTemporarily = 'lockout-temporarily',
     LockoutPermanent = 'lockout-permanent',
+    NonCompliantPrompt = 'non-compliant-prompt',
     Generic = 'generic',
   }
 

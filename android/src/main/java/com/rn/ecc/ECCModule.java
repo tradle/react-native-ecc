@@ -1,6 +1,7 @@
 package com.rn.ecc;
 
 import android.content.Context;
+import android.os.Build;
 
 import androidx.biometric.BiometricPrompt;
 import androidx.biometric.BiometricPrompt.PromptInfo;
@@ -14,21 +15,25 @@ import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.UiThreadUtil;
 
 import java.security.Signature;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.Executors;
 
 
-/**
- * Created by Jacob Gins on 6/2/2016.
- */
 public class ECCModule extends ReactContextBaseJavaModule {
     private static final String KEY_TO_ALIAS_MAPPER = "key.to.alias.mapper";
     private final KeyManager keyManager;
     private BiometricPrompt biometricPrompt;
 
+    // Triggered when invalid parameters have been given to the biometric prompt
+    // (e.g., no prompt title).
     public static final int ERROR_INVALID_PROMPT_PARAMETERS = 1000;
+    // Triggered when trying to sign and the biometric set changed.
     public static final int ERROR_INVALID_SIGNATURE = 1001;
+    // Triggered by some OnePlus devices (that implement the biometric prompt
+    // wrong) on soft failures (e.g., wrong fingerprint).
+    public static final int ERROR_NON_COMPLIANT_PROMPT = 1002;
 
     public ECCModule(ReactApplicationContext reactContext) {
         super(reactContext);
@@ -117,10 +122,87 @@ public class ECCModule extends ReactContextBaseJavaModule {
 
     @ReactMethod
     public void cancelSigning(ReadableMap map, Callback function) {
-        if (biometricPrompt != null) {
-            biometricPrompt.cancelAuthentication();
+        cancelAuthentication();
+    }
+
+    private void cancelAuthentication() {
+        try {
+            if (biometricPrompt != null) {
+                biometricPrompt.cancelAuthentication();
+            }
+        } catch (Exception ex) {
+            // Do nothing.
+        } finally {
             biometricPrompt = null;
         }
-        function.invoke(null, null);
+    }
+
+    public class ECCAuthenticationCallback extends BiometricPrompt.AuthenticationCallback {
+        // See: https://forums.oneplus.com/threads/oneplus-7-pro-fingerprint-biometricprompt-does-not-show.1035821/
+        private final String[] ONEPLUS_MODELS_WITHOUT_BIOMETRIC_BUG = {
+            "A0001", // OnePlus One
+            "ONE A2001", "ONE A2003", "ONE A2005", // OnePlus 2
+            "ONE E1001", "ONE E1003", "ONE E1005", // OnePlus X
+            "ONEPLUS A3000", "ONEPLUS SM-A3000", "ONEPLUS A3003", // OnePlus 3
+            "ONEPLUS A3010", // OnePlus 3T
+            "ONEPLUS A5000", // OnePlus 5
+            "ONEPLUS A5010", // OnePlus 5T
+            "ONEPLUS A6000", "ONEPLUS A6003" // OnePlus 6
+        };
+
+        public boolean hasOnePlusBiometricBug() {
+            return Build.BRAND.equalsIgnoreCase("oneplus") &&
+                !Arrays.asList(ONEPLUS_MODELS_WITHOUT_BIOMETRIC_BUG).contains(Build.MODEL);
+        }
+
+        private final KeyManager keyManager;
+        private final String data;
+        private final Callback callback;
+        private boolean onePlusWithBiometricBugFailure;
+
+        public ECCAuthenticationCallback(KeyManager keyManager, String data, Callback callback) {
+            this.keyManager = keyManager;
+            this.data = data;
+            this.callback = callback;
+            this.onePlusWithBiometricBugFailure = false;
+        }
+
+        @Override
+        public void onAuthenticationSucceeded(BiometricPrompt.AuthenticationResult authenticationResult) {
+            super.onAuthenticationSucceeded(authenticationResult);
+            try {
+                BiometricPrompt.CryptoObject cryptoObject = authenticationResult.getCryptoObject();
+                Signature signature = cryptoObject.getSignature();
+                String signedData = keyManager.sign(data, signature);
+                callback.invoke(null, signedData);
+            } catch (Exception ex) {
+                callback.invoke(ECCModule.ERROR_INVALID_SIGNATURE, null);
+            } finally {
+                biometricPrompt = null;
+                onePlusWithBiometricBugFailure = false;
+            }
+        }
+
+        @Override
+        public void onAuthenticationError(int errorCode, CharSequence errorCharSequence) {
+            super.onAuthenticationError(errorCode, errorCharSequence);
+            if (this.onePlusWithBiometricBugFailure) {
+                biometricPrompt = null;
+                onePlusWithBiometricBugFailure = false;
+                callback.invoke(ERROR_NON_COMPLIANT_PROMPT, null);
+            } else {
+                callback.invoke(errorCode, null);
+            }
+        }
+
+        @Override
+        public void onAuthenticationFailed() {
+            super.onAuthenticationFailed();
+
+            if (biometricPrompt != null && hasOnePlusBiometricBug()) {
+                onePlusWithBiometricBugFailure = true;
+                cancelAuthentication();
+            }
+        }
     }
 }

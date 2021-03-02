@@ -3,6 +3,7 @@ export const ErrorCode = Object.freeze({
   BiometryNotAvailable: 'biometry-not-available',
   LockoutTemporarily: 'lockout-temporarily',
   LockoutPermanent: 'lockout-permanent',
+  NonCompliantPrompt: 'non-compliant-prompt',
   Generic: 'generic',
 });
 
@@ -26,6 +27,7 @@ export const AndroidErrorCode = Object.freeze({
   15: ErrorCode.Generic,                // ERROR_SECURITY_UPDATE_REQUIRED
   1000: ErrorCode.Generic,              // ERROR_INVALID_PROMPT_PARAMETERS (custom error)
   1001: ErrorCode.BiometryNotAvailable, // ERROR_INVALID_SIGNATURE (custom error)
+  1002: ErrorCode.NonCompliantPrompt,   // ERROR_NON_COMPLIANT_PROMPT (custom error)
 });
 
 /**
