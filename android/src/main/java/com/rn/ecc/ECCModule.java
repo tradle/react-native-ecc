@@ -160,6 +160,10 @@ public class ECCModule extends ReactContextBaseJavaModule {
         private final Callback callback;
         private boolean onePlusWithBiometricBugFailure;
 
+        // This boolean is meant to check if the invoke method has already been called.
+        // This is to avoid crashes caused by a second call to the invoke method.
+        private boolean didResolve;
+
         public ECCAuthenticationCallback(KeyManager keyManager, String data, Callback callback) {
             this.keyManager = keyManager;
             this.data = data;
@@ -170,6 +174,10 @@ public class ECCModule extends ReactContextBaseJavaModule {
         @Override
         public void onAuthenticationSucceeded(BiometricPrompt.AuthenticationResult authenticationResult) {
             super.onAuthenticationSucceeded(authenticationResult);
+            if(didResolve) {
+              return;
+            }
+            
             try {
                 BiometricPrompt.CryptoObject cryptoObject = authenticationResult.getCryptoObject();
                 Signature signature = cryptoObject.getSignature();
@@ -178,21 +186,31 @@ public class ECCModule extends ReactContextBaseJavaModule {
             } catch (Exception ex) {
                 callback.invoke(ECCModule.ERROR_INVALID_SIGNATURE, null);
             } finally {
-                biometricPrompt = null;
+                cancelAuthentication();
                 onePlusWithBiometricBugFailure = false;
+                didResolve = true;
             }
         }
 
         @Override
         public void onAuthenticationError(int errorCode, CharSequence errorCharSequence) {
             super.onAuthenticationError(errorCode, errorCharSequence);
+            if(didResolve) {
+              return;
+            }
+
             if (this.onePlusWithBiometricBugFailure) {
-                biometricPrompt = null;
                 onePlusWithBiometricBugFailure = false;
                 callback.invoke(ERROR_NON_COMPLIANT_PROMPT, null);
             } else {
                 callback.invoke(errorCode, null);
             }
+
+            // This method should be called automatically by Android but in some case ( Huawei ) is not.
+            // This is to avoid crashes caused by a second call to the invoke method.
+            cancelAuthentication();
+
+            didResolve = true;
         }
 
         @Override
