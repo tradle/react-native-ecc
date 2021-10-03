@@ -165,7 +165,6 @@ public class ECCModule extends ReactContextBaseJavaModule {
             function.invoke(ex.toString(), null);
             return;
         }
-        function.invoke(null, false);
     }
 
     public KeyStore.Entry getEntry (String publicKeyString) throws GeneralSecurityException, IOException {
