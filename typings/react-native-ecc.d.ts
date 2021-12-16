@@ -30,7 +30,7 @@ declare module 'react-native-ecc' {
     constructor(errorCode: ErrorCode, nativeCode: string);
   }
 
-  function setServiceID(): void;
+  function setServiceID(id: string): void;
   function generateKeys(): Promise<PublicKey>;
   function sign(args: SignArgs): Promise<string>;
   function cancelSigning(): Promise<void>;
